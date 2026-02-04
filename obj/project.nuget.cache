@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "Y/1mWL0yZOY=",
+  "success": true,
+  "projectFilePath": "/home/hakari/code/findajob/findajob.csproj",
+  "expectedPackageFiles": [
+    "/home/hakari/.nuget/packages/microsoft.aspnetcore.app.internal.assets/10.0.0/microsoft.aspnetcore.app.internal.assets.10.0.0.nupkg.sha512",
+    "/home/hakari/.nuget/packages/microsoft.aspnetcore.app.ref/10.0.0/microsoft.aspnetcore.app.ref.10.0.0.nupkg.sha512"
+  ],
+  "logs": []
+}
