@@ -1,0 +1,71 @@
+@page "/Account/Login"
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Identity
+@using findajob.Models
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16">
+    <MudPaper Elevation="0" Class="pa-8" Style="border: 1px solid #333; background: #121212;">
+        <MudStack Spacing="6">
+            <div style="text-align: center;">
+                <MudText Typo="Typo.h4" Style="letter-spacing: 2px; text-transform: uppercase; font-weight: 700;">Access</MudText>
+                <MudText Typo="Typo.caption" Style="color: #666;">FIND-A-JOB TERMINAL v1.0</MudText>
+            </div>
+
+            <EditForm Model="@_model" OnValidSubmit="HandleLogin" FormName="LoginForm">
+                <DataAnnotationsValidator />
+                
+                <MudTextField T="string" Label="IDENTIFIER" @bind-Value="_model.Email" 
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              For="@(() => _model.Email)" Class="mb-4" />
+
+                <MudTextField T="string" Label="CREDENTIAL" @bind-Value="_model.Password" 
+                              Variant="Variant.Outlined" Margin="Margin.Dense"
+                              InputType="InputType.Password" 
+                              For="@(() => _model.Password)" Class="mb-4" />
+
+                <div class="d-flex align-center justify-space-between">
+                    <MudCheckBox T="bool" @bind-Value="_model.RememberMe" Label="STAY LOGGED IN" 
+                                 Color="Color.Primary" Dense="true" />
+                </div>
+
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" 
+                           Color="Color.Primary" FullWidth="true" Class="mt-6 py-3"
+                           Style="border-radius: 0px; font-weight: 900;">
+                    INITIALIZE SESSION
+                </MudButton>
+            </EditForm>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private LoginModel _model = new();
+
+    private async Task HandleLogin()
+    {
+        var result = await SignInManager.PasswordSignInAsync(
+            _model.Email, _model.Password, _model.RememberMe, lockoutOnFailure: false);
+
+        if (result.Succeeded)
+        {
+            // Change ShowIcon = false to HideIcon = true
+            Snackbar.Add("SESSION AUTHORIZED", Severity.Success, config => { config.HideIcon = true; });
+            Nav.NavigateTo("/", forceLoad: true);
+        }
+        else
+        {
+            // Change ShowIcon = false to HideIcon = true
+            Snackbar.Add("INVALID CREDENTIALS", Severity.Error, config => { config.HideIcon = true; });
+        }
+    }
+
+    public class LoginModel
+    {
+        [Required] [EmailAddress] public string Email { get; set; } = "";
+        [Required] [DataType(DataType.Password)] public string Password { get; set; } = "";
+        public bool RememberMe { get; set; }
+    }
+}

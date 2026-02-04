@@ -1,23 +1,57 @@
 ﻿@inherits LayoutComponentBase
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+@* 1. Place the Theme and Providers at the top *@
+<MudThemeProvider Theme="_cyberTheme" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
+<MudLayout>
+    <MudAppBar Elevation="1" Color="Color.Dark">
+        <MudText Typo="Typo.h5" Class="ml-3">FindAJob.com</MudText>
+        <MudSpacer />
+        
+        <AuthorizeView>
+            <Authorized>
+                <MudText Typo="Typo.body1" Class="mr-4">
+                    Welcome, <b>@context.User.Identity?.Name</b>
+                </MudText>
+                <MudButton href="/employer/post-job" Variant="Variant.Text" Color="Color.Inherit">Post Job</MudButton>
+                
+                <form action="Account/Logout" method="post" style="display:inline" @formname="logout-form">
+                    <AntiforgeryToken />
+                    <button type="submit" class="mud-button-root mud-button mud-button-text mud-button-text-inherit mud-ripple">
+                        Logout
+                    </button>
+                </form>
+            </Authorized>
+            <NotAuthorized>
+                <MudButton href="/Account/Login" Variant="Variant.Filled" Color="Color.Primary">Login</MudButton>
+            </NotAuthorized>
+        </AuthorizeView>
+    </MudAppBar>
 
-        <article class="content px-4">
-            @Body
-        </article>
-    </main>
-</div>
+    <MudMainContent Class="mt-16 pa-8">
+        @Body
+    </MudMainContent>
+</MudLayout>
 
-<div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
-</div>
+@code {
+    // 2. Define the theme in the code block
+    private MudTheme _cyberTheme = new MudTheme()
+    {
+        PaletteDark = new PaletteDark()
+        {
+            Primary = "#00f0ff",      // Cyan
+            Secondary = "#ff003c",    // Cyber Red
+            Background = "#0a0a0a",   // Pitch Black
+            Surface = "#121212",      // Dark Gray for Cards
+            AppbarBackground = "#050505",
+            TextPrimary = "#ffffff",
+            TextSecondary = "rgba(255,255,255, 0.70)",
+            ActionDefault = "#00f0ff",
+            LinesDefault = "#333333",
+            Divider = "#333333"
+        }
+    };
+}

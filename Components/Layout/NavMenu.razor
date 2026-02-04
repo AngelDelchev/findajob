@@ -9,22 +9,23 @@
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
         <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+            <NavLink class="nav-link" href="Home" Match="NavLinkMatch.All">
                 <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="counter">
-                <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Counter
-            </NavLink>
-        </div>
-
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="weather">
-                <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> Weather
             </NavLink>
         </div>
     </nav>
 </div>
+
+<AuthorizeView>
+    <Authorized>
+        <MudNavLink href="/employer/post-job" Icon="@Icons.Material.Filled.Add">Post a Job</MudNavLink>
+        <form action="Account/Logout" method="post" style="display:inline">
+            <AntiforgeryToken />
+            <button type="submit" class="mud-nav-link mud-ripple">Logout</button>
+        </form>
+    </Authorized>
+    <NotAuthorized>
+        <MudNavLink href="/Account/Login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
+    </NotAuthorized>
+</AuthorizeView>
 
