@@ -1,0 +1,58 @@
+@page "/employer/post-job"
+@using Microsoft.AspNetCore.Components.Authorization
+@using findajob.Models
+@using findajob.Data
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = "Employer, Admin")]
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Nav
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        <MudText Typo="Typo.h4" GutterBottom="true">Post a New Job</MudText>
+        
+        <EditForm Model="@_job" OnValidSubmit="HandleValidSubmit">
+            <DataAnnotationsValidator />
+            
+            <MudTextField Label="Job Title" @bind-Value="_job.Title" 
+                          For="@(() => _job.Title)" Variant="Variant.Outlined" Class="mb-4" />
+            
+            <MudTextField Label="Description" @bind-Value="_job.Description" 
+                          Lines="5" Variant="Variant.Outlined" Class="mb-4" />
+            
+            <MudNumericField Label="Salary" @bind-Value="_job.Salary" 
+                            Format="N2" Variant="Variant.Outlined" Class="mb-4" />
+
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" 
+                       Color="Color.Primary" FullWidth="true" Class="mt-4">
+                Publish Job
+            </MudButton>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private JobPosting _job = new();
+
+    private async Task HandleValidSubmit()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        // Get the NameIdentifier (the User ID) from the claims
+        var userId = user.FindFirst(c => c.Type == System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userId)) return;
+
+        using var context = DbFactory.CreateDbContext();
+        
+        _job.EmployerId = userId;
+        _job.PostedDate = DateTime.UtcNow;
+        
+        context.JobPostings.Add(_job);
+        await context.SaveChangesAsync();
+        
+        Nav.NavigateTo("/"); 
+    }
+}

@@ -1,7 +1,74 @@
 ﻿@page "/"
+@using Microsoft.EntityFrameworkCore
+@using findajob.Data
+@using findajob.Models
+@inject IDbContextFactory<ApplicationDbContext> DbFactory
 
-<PageTitle>Home</PageTitle>
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    @* Hero Section *@
+    <MudPaper Class="pa-16 mud-theme-primary" Style="text-align:center; border-radius: 4px; background: white;">
+        <MudText Typo="Typo.h2" GutterBottom="true">Find Your Next Big Thing</MudText>
+        <MudText Typo="Typo.h5" Class="mb-8" Style="opacity: 0.8;">The most efficient job board for Bulgarian tech talent.</MudText>
+        
+        <MudStack Row="true" Justify="Justify.Center">
+            <MudTextField @bind-Value="_search" Placeholder="Search jobs (e.g. .NET Developer)" 
+                          Variant="Variant.Outlined" 
+                          Style="background-color: transparent; width: 200px; color: white;" />
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Large">Search</MudButton>
+        </MudStack>
+    </MudPaper>
 
-<h1>Hello, world!</h1>
+    <MudText Typo="Typo.h4" Class="mt-12 mb-6">Recent Job Openings</MudText>
+    
+    @if (_jobs == null)
+    {
+        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-7" />
+    }
+    else if (!_jobs.Any())
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" NoIcon="true">
+            No jobs posted yet. Be the first to post!
+        </MudAlert>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var job in _jobs)
+            {
+                <MudItem xs="12" sm="6" md="4">
+                    <MudCard Elevation="2" Style="border: 1px solid #333; background: transparent;">
+                        <MudCardHeader>
+                            <CardHeaderContent>
+                                <MudText Typo="Typo.h6">@job.Title</MudText>
+                                <MudText Typo="Typo.caption" Style="opacity: 0.6;">Posted @job.PostedDate.ToShortDateString()</MudText>
+                            </CardHeaderContent>
+                        </MudCardHeader>
+                        <MudCardContent>
+                            <MudText Typo="Typo.body2">
+                                @(job.Description.Length > 100 ? job.Description.Substring(0, 100) + "..." : job.Description)
+                            </MudText>
+                            <MudText Color="Color.Success" Class="mt-4"><b>@job.Salary.ToString("N0") BGN</b></MudText>
+                        </MudCardContent>
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary">Details</MudButton>
+                        </MudCardActions>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+</MudContainer>
 
-Welcome to your new app.
+@code {
+    private string _search = "";
+    private List<JobPosting>? _jobs;
+
+    protected override async Task OnInitializedAsync()
+    {
+        using var context = DbFactory.CreateDbContext();
+        _jobs = await context.JobPostings
+                             .OrderByDescending(j => j.PostedDate)
+                             .Take(12)
+                             .ToListAsync();
+    }
+}
