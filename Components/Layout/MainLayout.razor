@@ -7,30 +7,38 @@
 <MudSnackbarProvider />
 
 <MudLayout>
-    <MudAppBar Elevation="1" Color="Color.Dark">
-        <MudText Typo="Typo.h5" Class="ml-3">FindAJob.com</MudText>
-        <MudSpacer />
-        
-        <AuthorizeView>
-            <Authorized>
-                <MudText Typo="Typo.body1" Class="mr-4">
-                    Welcome, <b>@context.User.Identity?.Name</b>
-                </MudText>
-                <MudButton href="/employer/post-job" Variant="Variant.Text" Color="Color.Inherit">Post Job</MudButton>
-                
-                <form action="Account/Logout" method="post" style="display:inline" @formname="logout-form">
-                    <AntiforgeryToken />
-                    <button type="submit" class="mud-button-root mud-button mud-button-text mud-button-text-inherit mud-ripple">
-                        Logout
-                    </button>
-                </form>
-            </Authorized>
-            <NotAuthorized>
-                <MudButton href="/Account/Login" Variant="Variant.Filled" Color="Color.Primary">Login</MudButton>
-            </NotAuthorized>
-        </AuthorizeView>
-    </MudAppBar>
+    <MudAppBar Elevation="1">
+    <MudButton href="/" Variant="Variant.Text" Class="ml-3 px-2" Style="text-transform:none;">
+    <MudText Typo="Typo.h5" Style="color: white; font-weight: 900; letter-spacing: -1px;">
+        FindAJob.bg
+    </MudText>
+</MudButton>
+    <MudSpacer />
+    <AuthorizeView>
+    <Authorized>
+        @* The Dashboard Link *@
+        <MudButton Href="/ManageJobs" 
+                   Variant="Variant.Text" 
+                   Style="color: #00f0ff; font-family: monospace; border: 1px solid #00f0ff; margin-right: 15px;">
+            [ADMIN_TERMINAL]
+        </MudButton>
 
+        <MudText Typo="Typo.body1" Class="mr-4">
+            Welcome, <b>@context.User.Identity?.Name</b>
+        </MudText>
+        
+        <form action="Account/Logout" method="post" @formname="logout-main" style="display:inline">
+            <AntiforgeryToken />
+            <button type="submit" class="mud-button-root">LOGOUT</button>
+        </form>
+    </Authorized>
+    <NotAuthorized>
+        <MudButton href="/Login" Variant="Variant.Filled" Color="Color.Primary">
+            INITIALIZE SESSION
+        </MudButton>
+    </NotAuthorized>
+</AuthorizeView>
+</MudAppBar>
     <MudMainContent Class="mt-16 pa-8">
         @Body
     </MudMainContent>
