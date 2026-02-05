@@ -1,74 +1,110 @@
 ﻿@page "/"
-@using Microsoft.EntityFrameworkCore
-@using findajob.Data
 @using findajob.Models
-@inject IDbContextFactory<ApplicationDbContext> DbFactory
+@using findajob.Services
+@using Microsoft.EntityFrameworkCore
+@inject JobService JobService
 
-<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
-    @* Hero Section *@
-    <MudPaper Class="pa-16 mud-theme-primary" Style="text-align:center; border-radius: 4px; background: white;">
-        <MudText Typo="Typo.h2" GutterBottom="true">Find Your Next Big Thing</MudText>
-        <MudText Typo="Typo.h5" Class="mb-8" Style="opacity: 0.8;">The most efficient job board for Bulgarian tech talent.</MudText>
-        
-        <MudStack Row="true" Justify="Justify.Center">
-            <MudTextField @bind-Value="_search" Placeholder="Search jobs (e.g. .NET Developer)" 
-                          Variant="Variant.Outlined" 
-                          Style="background-color: transparent; width: 200px; color: white;" />
-            <MudButton Variant="Variant.Filled" Color="Color.Secondary" Size="Size.Large">Search</MudButton>
-        </MudStack>
-    </MudPaper>
+<PageTitle>FindAJob.bg</PageTitle>
 
-    <MudText Typo="Typo.h4" Class="mt-12 mb-6">Recent Job Openings</MudText>
+@* HERO SECTION *@
+<MudPaper Elevation="0" Class="py-16 px-4 mb-8" 
+          Style="background: linear-gradient(135deg, #00f0ff 0%, #0080ff 100%); color: white; text-align: center;">
     
-    @if (_jobs == null)
+    <MudText Typo="Typo.h2" Class="mb-4" Style="font-weight: 900; letter-spacing: -1px;">
+        Find Your Next Big Thing
+    </MudText>
+    <MudText Typo="Typo.h5" Class="mb-8" Style="opacity: 0.9;">
+        The most efficient job board for Bulgarian tech talent.
+    </MudText>
+
+    @* THE SEARCH BAR *@
+    <MudGrid Justify="Justify.Center">
+        <MudItem xs="12" sm="8" md="6">
+            <div class="d-flex gap-2">
+                <MudTextField @bind-Value="_searchText" 
+                              Placeholder="Search jobs (e.g. .NET Developer)..." 
+                              Variant="Variant.Outlined" 
+                              Style="background: rgba(255,255,255,0.15); color: white; border: 1px solid white;"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              OnKeyDown="@HandleEnterKey" /> 
+
+                <MudButton Variant="Variant.Filled" 
+                           Color="Color.Secondary" 
+                           Size="Size.Large"
+                           OnClick="PerformSearch"
+                           Style="font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2);">
+                    SEARCH
+                </MudButton>
+            </div>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@* JOB LISTINGS *@
+<MudContainer MaxWidth="MaxWidth.Large">
+    <MudText Typo="Typo.h4" Class="mb-6">Recent Job Openings</MudText>
+
+    @if (_isLoading)
     {
-        <MudProgressLinear Color="Color.Primary" Indeterminate="true" Class="my-7" />
+        <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
     }
-    else if (!_jobs.Any())
-    {
-        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" NoIcon="true">
-            No jobs posted yet. Be the first to post!
-        </MudAlert>
-    }
-    else
+    else if (_jobs.Any())
     {
         <MudGrid>
             @foreach (var job in _jobs)
             {
-                <MudItem xs="12" sm="6" md="4">
-                    <MudCard Elevation="2" Style="border: 1px solid #333; background: transparent;">
-                        <MudCardHeader>
-                            <CardHeaderContent>
-                                <MudText Typo="Typo.h6">@job.Title</MudText>
-                                <MudText Typo="Typo.caption" Style="opacity: 0.6;">Posted @job.PostedDate.ToShortDateString()</MudText>
-                            </CardHeaderContent>
-                        </MudCardHeader>
+                <MudItem xs="12" md="6" lg="4">
+                    <MudCard Elevation="3" Class="h-100" Style="border-left: 5px solid #00f0ff; background: #1a1a1a;">
                         <MudCardContent>
-                            <MudText Typo="Typo.body2">
-                                @(job.Description.Length > 100 ? job.Description.Substring(0, 100) + "..." : job.Description)
+                            <MudText Typo="Typo.h6" Style="color: #00f0ff;">@job.Title</MudText>
+                            <MudText Typo="Typo.subtitle2" Class="mb-2" Style="color: #ccc;">@job.Company</MudText>
+                            <MudText Typo="Typo.body2" Style="color: #888;">
+                                @(job.Description.Length > 100 ? job.Description.Substring(0, 97) + "..." : job.Description)
                             </MudText>
-                            <MudText Color="Color.Success" Class="mt-4"><b>@job.Salary.ToString("N0") BGN</b></MudText>
                         </MudCardContent>
                         <MudCardActions>
-                            <MudButton Variant="Variant.Text" Color="Color.Primary">Details</MudButton>
+                            <MudButton Href="@($"/job/{job.Id}")" Variant="Variant.Text" Color="Color.Primary">
+                                DETAILS
+                            </MudButton>
                         </MudCardActions>
                     </MudCard>
                 </MudItem>
             }
         </MudGrid>
     }
+    else
+    {
+        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4" 
+                  Style="border-color: #00f0ff; color: #00f0ff;">
+            NO_DATA_FOUND // TRY_NEW_PARAMETERS
+        </MudAlert>
+    }
 </MudContainer>
 
 @code {
-    private string _search = "";
-    private List<JobPosting>? _jobs;
+    private List<JobPosting> _jobs = new();
+    private string _searchText = "";
+    private bool _isLoading = true;
 
     protected override async Task OnInitializedAsync()
     {
-        using var context = DbFactory.CreateDbContext();
-        _jobs = await context.JobPostings
-                             .OrderByDescending(j => j.PostedDate)
-                             .Take(12)
-                             .ToListAsync();
+        await PerformSearch();
+    }
+
+    private async Task PerformSearch()
+    {
+        _isLoading = true;
+        _jobs = await JobService.SearchJobsAsync(_searchText);
+        _isLoading = false;
+    }
+    
+    // Allows pressing "Enter" in the text box to search
+    private async Task HandleEnterKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await PerformSearch();
+        }
     }
 }

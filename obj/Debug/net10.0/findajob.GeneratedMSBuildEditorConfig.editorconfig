@@ -41,6 +41,10 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BY2NvdW50L0xvZ2luLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
+[/home/hakari/code/findajob/Components/Pages/Account/Logout.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BY2NvdW50L0xvZ291dC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
 [/home/hakari/code/findajob/Components/Pages/Employer/PostJob.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9FbXBsb3llci9Qb3N0Sm9iLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
@@ -51,6 +55,14 @@ build_metadata.AdditionalFiles.CssScope =
 
 [/home/hakari/code/findajob/Components/Pages/Home.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Ib21lLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hakari/code/findajob/Components/Pages/JobDetails.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9Kb2JEZXRhaWxzLnJhem9y
+build_metadata.AdditionalFiles.CssScope = 
+
+[/home/hakari/code/findajob/Components/Pages/ManageJobs.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9NYW5hZ2VKb2JzLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 
 
 [/home/hakari/code/findajob/Components/Pages/NotFound.razor]

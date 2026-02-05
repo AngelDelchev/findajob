@@ -1,0 +1,49 @@
+@page "/job/{Id:int}"
+@using findajob.Models
+@using findajob.Services
+@inject JobService JobService
+@inject NavigationManager Nav
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-16">
+    @if (_job is null)
+    {
+        <MudAlert Severity="Severity.Error">ERROR: FILE_NOT_FOUND (ID: @Id)</MudAlert>
+        <MudButton Href="/" Variant="Variant.Text" Color="Color.Primary">RETURN_HOME</MudButton>
+    }
+    else
+    {
+        <MudPaper Elevation="0" Class="pa-8" Style="border: 2px solid #00f0ff; background: #0a0a0a; color: white;">
+            @* Header *@
+            <div class="d-flex justify-space-between align-center mb-6">
+                <MudText Typo="Typo.h4" Style="color: #00f0ff; font-weight: 900;">@_job.Title</MudText>
+                <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Label="true">ID: @_job.Id</MudChip>
+            </div>
+
+            @* Meta Data *@
+            <MudDivider Class="mb-4" Style="background: #333;" />
+            <MudText Typo="Typo.h6" Class="mb-2" Style="font-family: monospace; color: #aaa;">ORGANIZATION: <span style="color:white">@_job.Company</span></MudText>
+            <MudText Typo="Typo.caption" Class="mb-6" Style="font-family: monospace; color: #666;">TIMESTAMP: @_job.CreatedAt.ToLocalTime()</MudText>
+
+            @* Description *@
+            <MudText Typo="Typo.body1" Class="mt-4" Style="font-family: monospace; line-height: 1.6;">
+                @_job.Description
+            </MudText>
+
+            @* Actions *@
+            <div class="mt-8 d-flex gap-4">
+                <MudButton Href="/" Variant="Variant.Outlined" Color="Color.Secondary">CLOSE_FILE</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Email">APPLY_NOW</MudButton>
+            </div>
+        </MudPaper>
+    }
+</MudContainer>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private JobPosting? _job;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _job = await JobService.GetJobByIdAsync(Id);
+    }
+}
