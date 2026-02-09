@@ -11,6 +11,8 @@ namespace findajob.Data
 
         public DbSet<JobPosting> JobPostings => Set<JobPosting>();
 
+        public DbSet<JobApplication> JobApplications { get; set; }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);

@@ -9,28 +9,36 @@ namespace findajob.Controllers
     public class AccountController : Controller
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
+        private readonly UserManager<ApplicationUser> _userManager;
 
-        public AccountController(SignInManager<ApplicationUser> signInManager) =>
+        public AccountController(
+            SignInManager<ApplicationUser> signInManager,
+            UserManager<ApplicationUser> userManager
+        ) // Inject it here
+        {
             _signInManager = signInManager;
+            _userManager = userManager;
+        }
 
         [HttpPost("Login")]
-        [IgnoreAntiforgeryToken] // <--- THIS KILLS THE ERROR
+        [IgnoreAntiforgeryToken]
         public async Task<IActionResult> Login([FromForm] string email, [FromForm] string password)
         {
-            var result = await _signInManager.PasswordSignInAsync(
-                email,
-                password,
-                isPersistent: true,
-                lockoutOnFailure: false
-            );
-
+            var result = await _signInManager.PasswordSignInAsync(email, password, true, false);
             if (result.Succeeded)
             {
-                // Force a hard redirect back to the root
+                var user = await _userManager.FindByEmailAsync(email);
+                var roles = await _userManager.GetRolesAsync(user);
+
+                // Smart Redirect based on Role
+                if (roles.Contains("Employer"))
+                    return LocalRedirect("/Employer/Dashboard");
+                if (roles.Contains("Admin"))
+                    return LocalRedirect("/ManageJobs");
+
                 return LocalRedirect("/");
             }
-
-            return Redirect("/Account/Login?error=1");
+            return Redirect("/Login?error=1");
         }
 
         [HttpPost("TerminalLogout")]
