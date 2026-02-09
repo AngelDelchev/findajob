@@ -1,0 +1,61 @@
+@page "/Employer/Dashboard"
+@attribute [Authorize]
+@inject JobService JobService
+@inject AuthenticationStateProvider AuthState
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-10">
+    <MudText Typo="Typo.h4" Style="color: #00f0ff; font-weight: bold;" Class="mb-6">EMPLOYER_CONTROL_PANEL</MudText>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
+        <MudTabPanel Text="MY_LISTINGS">
+            <MudTable Items="@_myJobs" Hover="true" Dense="true">
+                <HeaderContent>
+                    <MudTh>TITLE</MudTh>
+                    <MudTh>DATE</MudTh>
+                    <MudTh>ACTIONS</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.Title</MudTd>
+                    <MudTd>@context.CreatedAt.ToShortDateString()</MudTd>
+                    <MudTd>
+                        <MudButton Color="Color.Error" OnClick="@(() => Delete(context.Id))">TAKE_DOWN</MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+        
+        <MudTabPanel Text="APPLICATIONS">
+            <MudTable Items="@_apps" Hover="true">
+                <HeaderContent>
+                    <MudTh>APPLICANT</MudTh>
+                    <MudTh>JOB_ID</MudTh>
+                    <MudTh>DATE</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd>@context.ApplicantEmail</MudTd>
+                    <MudTd>@context.JobId</MudTd>
+                    <MudTd>@context.AppliedAt.ToShortDateString()</MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private List<JobPosting> _myJobs = new();
+    private List<JobApplication> _apps = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (userId != null)
+        {
+            _myJobs = await JobService.GetEmployerJobsAsync(userId);
+            _apps = await JobService.GetApplicationsForEmployerAsync(userId);
+        }
+    }
+
+    private async Task Delete(int id) { /* Call Service Delete */ }
+}

@@ -71,5 +71,25 @@ namespace findajob.Services
             context.JobPostings.Update(job);
             await context.SaveChangesAsync();
         }
+
+        public async Task<List<JobPosting>> GetEmployerJobsAsync(string userId)
+        {
+            using var context = await _factory.CreateDbContextAsync();
+            return await context
+                .JobPostings.Where(j => j.OwnerId == userId)
+                .OrderByDescending(j => j.CreatedAt)
+                .ToListAsync();
+        }
+
+        public async Task<List<JobApplication>> GetApplicationsForEmployerAsync(string employerId)
+        {
+            using var context = await _factory.CreateDbContextAsync();
+            var jobIds = await context
+                .JobPostings.Where(j => j.OwnerId == employerId)
+                .Select(j => j.Id)
+                .ToListAsync();
+
+            return await context.JobApplications.Where(a => jobIds.Contains(a.JobId)).ToListAsync();
+        }
     }
 }
