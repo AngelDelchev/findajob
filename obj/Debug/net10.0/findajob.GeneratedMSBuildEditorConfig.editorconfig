@@ -45,6 +45,10 @@ build_metadata.AdditionalFiles.CssScope =
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9BY2NvdW50L0xvZ291dC5yYXpvcg==
 build_metadata.AdditionalFiles.CssScope = 
 
+[/home/hakari/code/findajob/Components/Pages/Employer/EmployerDashboard.razor]
+build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9FbXBsb3llci9FbXBsb3llckRhc2hib2FyZC5yYXpvcg==
+build_metadata.AdditionalFiles.CssScope = 
+
 [/home/hakari/code/findajob/Components/Pages/Employer/PostJob.razor]
 build_metadata.AdditionalFiles.TargetPath = Q29tcG9uZW50cy9QYWdlcy9FbXBsb3llci9Qb3N0Sm9iLnJhem9y
 build_metadata.AdditionalFiles.CssScope = 

@@ -21,17 +21,34 @@ public static class DbInitializer
         }
 
         // Optional: Seed a default Admin account for testing
-        var adminEmail = "admin@findajob.com";
+        string adminEmail = "monkeyinthehat@findajob.com";
+        string adminUsername = "monkeyinthehat";
         if (await userManager.FindByEmailAsync(adminEmail) == null)
         {
             var admin = new ApplicationUser
             {
-                UserName = adminEmail,
+                UserName = adminUsername,
                 Email = adminEmail,
                 EmailConfirmed = true,
             };
-            await userManager.CreateAsync(admin, "Password123!");
+            await userManager.CreateAsync(admin, "GetAjObScaMMEr69420LSD");
             await userManager.AddToRoleAsync(admin, "Admin");
+        }
+        string employerEmail = "boss@company.com";
+        string employerUsername = "boss";
+        var employer = await userManager.FindByEmailAsync(employerEmail);
+
+        if (employer == null)
+        {
+            var newEmployer = new ApplicationUser
+            {
+                UserName = employerUsername,
+                Email = employerEmail,
+                EmailConfirmed = true,
+            };
+
+            await userManager.CreateAsync(newEmployer, "WouldYoULiKEaJoBiNMYCallCeNtER");
+            await userManager.AddToRoleAsync(newEmployer, "Employer");
         }
     }
 }
