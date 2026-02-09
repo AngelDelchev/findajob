@@ -31,24 +31,30 @@ public static class DbInitializer
                 Email = adminEmail,
                 EmailConfirmed = true,
             };
-            await userManager.CreateAsync(admin, "GetAjObScaMMEr69420LSD");
-            await userManager.AddToRoleAsync(admin, "Admin");
+            var result = await userManager.CreateAsync(admin, "GetAjObScaMMEr69420LSD");
+
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(admin, "Admin");
+            }
         }
         string employerEmail = "boss@company.com";
         string employerUsername = "boss";
-        var employer = await userManager.FindByEmailAsync(employerEmail);
 
-        if (employer == null)
+        if (await userManager.FindByEmailAsync(employerEmail) == null)
         {
-            var newEmployer = new ApplicationUser
+            var employer = new ApplicationUser
             {
                 UserName = employerUsername,
                 Email = employerEmail,
                 EmailConfirmed = true,
             };
 
-            await userManager.CreateAsync(newEmployer, "WouldYoULiKEaJoBiNMYCallCeNtER");
-            await userManager.AddToRoleAsync(newEmployer, "Employer");
+            var result = await userManager.CreateAsync(employer, "WouldYoULiKEaJoBiNMYCallCeNtER");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(employer, "Employer");
+            }
         }
     }
 }
