@@ -11,5 +11,6 @@ namespace findajob.Models
         public DateTime PostedDate { get; set; } = DateTime.UtcNow;
         public string EmployerId { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+        public string OwnerId { get; set; } = string.Empty;
     }
 }
