@@ -1,0 +1,43 @@
+@page "/apply/{JobId:int}"
+@inject ISnackbar Snackbar
+@inject NavigationManager Nav
+@using System.ComponentModel.DataAnnotations
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        <MudText Typo="Typo.h4" GutterBottom="true">Job Application</MudText>
+        <MudText Typo="Typo.body2" Class="mb-6">Applying for Job ID: @JobId</MudText>
+
+        <EditForm Model="@application" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+            
+            <MudTextField Label="Full Name" @bind-Value="application.Name" For="@(() => application.Name)" Variant="Variant.Outlined" Class="mb-4" />
+            <MudTextField Label="Email" @bind-Value="application.Email" For="@(() => application.Email)" Variant="Variant.Outlined" Class="mb-4" />
+            <MudTextField Label="Cover Letter" @bind-Value="application.Message" For="@(() => application.Message)" Variant="Variant.Outlined" Lines="5" Class="mb-6" />
+
+            <div class="d-flex justify-space-between">
+                <MudButton Href="/" Variant="Variant.Text" Color="Color.Error">Cancel</MudButton>
+                <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Submit Application</MudButton>
+            </div>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    [Parameter] public int JobId { get; set; }
+    private ApplicationModel application = new();
+
+    private void HandleSubmit()
+    {
+        // For now, we'll just show a success message
+        Snackbar.Add("Application submitted successfully!", Severity.Success);
+        Nav.NavigateTo("/");
+    }
+
+    public class ApplicationModel
+    {
+        [Required] public string Name { get; set; }
+        [Required, EmailAddress] public string Email { get; set; }
+        [Required] public string Message { get; set; }
+    }
+}
