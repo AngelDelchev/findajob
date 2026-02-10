@@ -1,59 +1,94 @@
+using findajob.Controllers;
+using findajob.Data;
 using findajob.Models;
+using findajob.Services;
 using Microsoft.AspNetCore.Identity;
 
 namespace findajob.Data;
 
 public static class DbInitializer
 {
-    public static async Task SeedRolesAndAdminAsync(IServiceProvider serviceProvider)
+    public static async Task SeedRolesAndUsers(IServiceProvider serviceProvider)
     {
-        var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+        Console.WriteLine(">>> ATTEMPTING TO SEED NOW");
         var userManager = serviceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
-        string[] roleNames = { "Employer", "JobSeeker", "Admin" };
-
-        foreach (var roleName in roleNames)
+        // 1. Ensure Roles exist
+        string[] roles = { "Admin", "Employer", "User" };
+        foreach (var role in roles)
         {
-            if (!await roleManager.RoleExistsAsync(roleName))
+            if (!await roleManager.RoleExistsAsync(role))
+                await roleManager.CreateAsync(new IdentityRole(role));
+        }
+
+        // 2. Add Monkey (Admin)
+        var monkey = await userManager.FindByNameAsync("monkeyinthehat");
+        if (monkey == null)
+        {
+            monkey = new ApplicationUser
             {
-                await roleManager.CreateAsync(new IdentityRole(roleName));
+                UserName = "monkeyinthehat",
+                Email = "monkeyinthehat@findajob.com",
+                EmailConfirmed = true,
+                CompanyName = "FindAJob Headquarters", // Setting custom prop
+                ProfessionalTitle = "System Overlord", // Setting custom prop
+            };
+
+            var result = await userManager.CreateAsync(monkey, "1GetAjObScaMMErLSD!");
+            if (result.Succeeded)
+            {
+                await userManager.AddToRoleAsync(monkey, "Admin");
+                Console.WriteLine(">>> SEED: Monkey created successfully!");
+            }
+            else
+            {
+                Console.WriteLine(
+                    ">>> SEED ERROR (Monkey): "
+                        + string.Join(", ", result.Errors.Select(e => e.Description))
+                );
             }
         }
 
-        // Optional: Seed a default Admin account for testing
-        string adminEmail = "monkeyinthehat@findajob.com";
-        string adminUsername = "monkeyinthehat";
-        if (await userManager.FindByEmailAsync(adminEmail) == null)
+        // 3. Add Boss (Employer)
+        var boss = await userManager.FindByNameAsync("boss");
+        if (boss == null)
         {
-            var admin = new ApplicationUser
+            boss = new ApplicationUser
             {
-                UserName = adminUsername,
-                Email = adminEmail,
+                UserName = "boss",
+                Email = "boss@company.com",
                 EmailConfirmed = true,
+                CompanyName = "The Big Corp", // Setting custom prop
             };
-            var result = await userManager.CreateAsync(admin, "GetAjObScaMMEr69420LSD");
-
+            var result = await userManager.CreateAsync(boss, "1WouldYoULiKEaJoBiNMYCallCeNtER!");
             if (result.Succeeded)
-            {
-                await userManager.AddToRoleAsync(admin, "Admin");
-            }
+                await userManager.AddToRoleAsync(boss, "Employer");
         }
-        string employerEmail = "boss@company.com";
-        string employerUsername = "boss";
+    }
 
-        if (await userManager.FindByEmailAsync(employerEmail) == null)
+    private static async Task CreateUserWithRole(
+        UserManager<ApplicationUser> userManager,
+        string username,
+        string email,
+        string password,
+        string role
+    )
+    {
+        var user = await userManager.FindByEmailAsync(email);
+        if (user == null)
         {
-            var employer = new ApplicationUser
+            var newUser = new ApplicationUser
             {
-                UserName = employerUsername,
-                Email = employerEmail,
+                UserName = username, // Using your new variable here
+                Email = email,
                 EmailConfirmed = true,
             };
 
-            var result = await userManager.CreateAsync(employer, "WouldYoULiKEaJoBiNMYCallCeNtER");
+            var result = await userManager.CreateAsync(newUser, password);
             if (result.Succeeded)
             {
-                await userManager.AddToRoleAsync(employer, "Employer");
+                await userManager.AddToRoleAsync(newUser, role);
             }
         }
     }

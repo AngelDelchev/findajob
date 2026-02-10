@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace findajob.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialCreate : Migration
+    public partial class bugfixes14 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -32,7 +32,7 @@ namespace findajob.Migrations
                     Id = table.Column<string>(type: "TEXT", nullable: false),
                     CompanyName = table.Column<string>(type: "TEXT", nullable: true),
                     ProfessionalTitle = table.Column<string>(type: "TEXT", nullable: true),
-                    ResumeBlob = table.Column<byte>(type: "INTEGER", nullable: true),
+                    ResumeBlob = table.Column<byte[]>(type: "BLOB", nullable: true),
                     UserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     NormalizedUserName = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
                     Email = table.Column<string>(type: "TEXT", maxLength: 256, nullable: true),
@@ -54,6 +54,23 @@ namespace findajob.Migrations
                 });
 
             migrationBuilder.CreateTable(
+                name: "JobApplications",
+                columns: table => new
+                {
+                    Id = table.Column<int>(type: "INTEGER", nullable: false)
+                        .Annotation("Sqlite:Autoincrement", true),
+                    JobId = table.Column<int>(type: "INTEGER", nullable: false),
+                    ApplicantId = table.Column<string>(type: "TEXT", nullable: false),
+                    ApplicantEmail = table.Column<string>(type: "TEXT", nullable: false),
+                    ResumeUrl = table.Column<string>(type: "TEXT", nullable: false),
+                    AppliedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                },
+                constraints: table =>
+                {
+                    table.PrimaryKey("PK_JobApplications", x => x.Id);
+                });
+
+            migrationBuilder.CreateTable(
                 name: "JobPostings",
                 columns: table => new
                 {
@@ -61,10 +78,13 @@ namespace findajob.Migrations
                         .Annotation("Sqlite:Autoincrement", true),
                     Title = table.Column<string>(type: "TEXT", nullable: false),
                     Description = table.Column<string>(type: "TEXT", nullable: false),
+                    Company = table.Column<string>(type: "TEXT", nullable: false),
                     Salary = table.Column<decimal>(type: "TEXT", nullable: false),
                     IsDeleted = table.Column<bool>(type: "INTEGER", nullable: false),
                     PostedDate = table.Column<DateTime>(type: "TEXT", nullable: false),
-                    EmployerId = table.Column<string>(type: "TEXT", nullable: false)
+                    EmployerId = table.Column<string>(type: "TEXT", nullable: false),
+                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
+                    OwnerId = table.Column<string>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
                 {
@@ -237,6 +257,9 @@ namespace findajob.Migrations
 
             migrationBuilder.DropTable(
                 name: "AspNetUserTokens");
+
+            migrationBuilder.DropTable(
+                name: "JobApplications");
 
             migrationBuilder.DropTable(
                 name: "JobPostings");

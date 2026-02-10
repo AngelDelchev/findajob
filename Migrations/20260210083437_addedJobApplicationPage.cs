@@ -5,7 +5,7 @@
 namespace findajob.Migrations
 {
     /// <inheritdoc />
-    public partial class AddJobOwner_15 : Migration
+    public partial class addedJobApplicationPage : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

@@ -33,8 +33,17 @@ builder
 
 // 3. Database
 // Inside Program.cs
-builder.Services.AddPooledDbContextFactory<ApplicationDbContext>(options =>
-    options.UseSqlite("Data Source=findajob.db")
+var rootPath = Directory.GetCurrentDirectory();
+var dbPath = Path.Combine(rootPath, "findajob.db");
+var connectionString = $"Data Source={dbPath}";
+
+// 1. This registers the DbContext (which your Controller uses)
+builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connectionString));
+
+// 2. THIS IS THE MISSING PIECE (which your JobService uses)
+builder.Services.AddDbContextFactory<ApplicationDbContext>(
+    options => options.UseSqlite(connectionString),
+    ServiceLifetime.Scoped
 );
 
 // 4. Identity (Strict Registration Order!) [7, 5]
@@ -66,10 +75,6 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
-app.UseAuthentication();
-app.UseAuthorization();
-app.UseAntiforgery();
-
 // SQLite Performance: Enable WAL mode to prevent "Database Locked" during concurrent reads/writes
 using (var scope = app.Services.CreateScope())
 {
@@ -84,7 +89,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.MapControllers();
+app.UseAuthentication(); // 1. Who are you?
+app.UseAuthorization(); // 2. Are you allowed here?
+app.UseAntiforgery(); // 3. Is this a safe form post?
+
+app.MapControllers(); // This enables your AccountController
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.MapPost(
     "/Account/Logout",
@@ -96,7 +105,17 @@ app.MapPost(
 );
 using (var scope = app.Services.CreateScope())
 {
-    await DbInitializer.SeedRolesAndAdminAsync(scope.ServiceProvider);
-}
+    var services = scope.ServiceProvider;
+    try
+    {
+        var context = services.GetRequiredService<ApplicationDbContext>();
+        await context.Database.MigrateAsync();
 
+        await DbInitializer.SeedRolesAndUsers(services);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"An error occurred: {ex.Message}");
+    }
+}
 app.Run();

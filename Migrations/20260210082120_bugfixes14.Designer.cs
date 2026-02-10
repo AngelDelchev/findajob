@@ -11,8 +11,8 @@ using findajob.Data;
 namespace findajob.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260209121719_AddJobOwner_1.5")]
-    partial class AddJobOwner_15
+    [Migration("20260210082120_bugfixes14")]
+    partial class bugfixes14
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -219,6 +219,35 @@ namespace findajob.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
+                });
+
+            modelBuilder.Entity("findajob.Models.JobApplication", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicantEmail")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicantId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AppliedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ResumeUrl")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("JobApplications");
                 });
 
             modelBuilder.Entity("findajob.Models.JobPosting", b =>

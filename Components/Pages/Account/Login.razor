@@ -1,20 +1,38 @@
 @page "/Login"
+@inject NavigationManager Nav
 
 <MudContainer MaxWidth="MaxWidth.ExtraSmall" Class="mt-16">
     <MudPaper Elevation="0" Class="pa-8" Style="border: 2px solid #00f0ff; background: #0a0a0a; box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);">
         <MudStack Spacing="6">
-            <MudText Typo="Typo.h4" Align="Align.Center" Style="color: #00f0ff; font-weight: 900; letter-spacing: 3px;">TERMINAL_ACCESS</MudText>
+            <MudText Typo="Typo.h4" Align="Align.Center" Style="color: #00f0ff; font-weight: 900; letter-spacing: 3px;">LOG_IN</MudText>
+
+            @* Visual feedback for failed login *@
+            @if (Nav.Uri.Contains("error=1"))
+            {
+                <div style="border: 1px solid #ff0055; background: #2a0010; color: #ff0055; padding: 10px; font-family: monospace; font-size: 0.8rem; text-align: center;">
+                    ERROR_INVALID_CREDENTIALS
+                </div>
+            }
 
             @* Direct POST to Controller *@
             <form action="/Account/Login" method="post">
+            <AntiforgeryToken />
                 <div class="mb-4">
-                    <label style="color: #00f0ff; font-family: monospace; display: block; font-size: 0.8rem;">[IDENTIFIER]</label>
-                    <input name="email" type="email" style="width:100%; background:#121212; color:white; border:1px solid #333; padding:12px; font-family: monospace;" required />
+                    <label style="color: #00f0ff; font-family: monospace; display: block; font-size: 0.8rem;">[IDENTIFIER_USER_OR_EMAIL]</label>
+                    @* Change name to 'loginName' and type to 'text' *@
+                    <input name="loginName" 
+                           type="text" 
+                           placeholder="monkeyinthehat"
+                           style="width:100%; background:#121212; color:white; border:1px solid #333; padding:12px; font-family: monospace;" 
+                           required />
                 </div>
 
                 <div class="mb-6">
                     <label style="color: #00f0ff; font-family: monospace; display: block; font-size: 0.8rem;">[CREDENTIAL]</label>
-                    <input name="password" type="password" style="width:100%; background:#121212; color:white; border:1px solid #333; padding:12px; font-family: monospace;" required />
+                    <input name="password" 
+                           type="password" 
+                           style="width:100%; background:#121212; color:white; border:1px solid #333; padding:12px; font-family: monospace;" 
+                           required />
                 </div>
 
                 <button type="submit" style="width:100%; background:#00f0ff; color:black; font-weight:900; padding:15px; border:none; cursor:pointer; font-family: monospace;">
