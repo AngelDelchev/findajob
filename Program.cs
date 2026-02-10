@@ -105,17 +105,15 @@ app.MapPost(
 );
 using (var scope = app.Services.CreateScope())
 {
-    var services = scope.ServiceProvider;
-    try
-    {
-        var context = services.GetRequiredService<ApplicationDbContext>();
-        await context.Database.MigrateAsync();
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    var roles = new[] { "Admin", "Employer" };
 
-        await DbInitializer.SeedRolesAndUsers(services);
-    }
-    catch (Exception ex)
+    foreach (var role in roles)
     {
-        Console.WriteLine($"An error occurred: {ex.Message}");
+        if (!await roleManager.RoleExistsAsync(role))
+        {
+            await roleManager.CreateAsync(new IdentityRole(role));
+        }
     }
 }
 app.Run();

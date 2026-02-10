@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace findajob.Migrations
 {
     /// <inheritdoc />
-    public partial class bugfixes14 : Migration
+    public partial class reset : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -60,9 +60,9 @@ namespace findajob.Migrations
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     JobId = table.Column<int>(type: "INTEGER", nullable: false),
-                    ApplicantId = table.Column<string>(type: "TEXT", nullable: false),
+                    ApplicantName = table.Column<string>(type: "TEXT", nullable: false),
                     ApplicantEmail = table.Column<string>(type: "TEXT", nullable: false),
-                    ResumeUrl = table.Column<string>(type: "TEXT", nullable: false),
+                    Message = table.Column<string>(type: "TEXT", nullable: false),
                     AppliedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
                 },
                 constraints: table =>
@@ -79,7 +79,8 @@ namespace findajob.Migrations
                     Title = table.Column<string>(type: "TEXT", nullable: false),
                     Description = table.Column<string>(type: "TEXT", nullable: false),
                     Company = table.Column<string>(type: "TEXT", nullable: false),
-                    Salary = table.Column<decimal>(type: "TEXT", nullable: false),
+                    Salary = table.Column<string>(type: "TEXT", nullable: false),
+                    Location = table.Column<string>(type: "TEXT", nullable: false),
                     IsDeleted = table.Column<bool>(type: "INTEGER", nullable: false),
                     PostedDate = table.Column<DateTime>(type: "TEXT", nullable: false),
                     EmployerId = table.Column<string>(type: "TEXT", nullable: false),

@@ -61,8 +61,17 @@ namespace findajob.Controllers
 
             if (result.Succeeded)
             {
-                Console.WriteLine($">>> LOGIN SUCCESS for: {user.UserName}");
-                return Redirect("/ManageJobs");
+                var roles = await _userManager.GetRolesAsync(user);
+
+                if (roles.Contains("Admin"))
+                {
+                    return Redirect("/Admin/ManageJobs");
+                }
+                else if (roles.Contains("Employer"))
+                {
+                    return Redirect("/Employer/Dashboard");
+                }
+                return Redirect("/");
             }
 
             // THIS WILL TELL US THE TRUTH:

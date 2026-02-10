@@ -18,14 +18,17 @@
 
 <AuthorizeView>
     <Authorized>
-        <MudNavLink href="/employer/post-job" Icon="@Icons.Material.Filled.Add">Post a Job</MudNavLink>
-        <form action="Account/Logout" method="post" style="display:inline">
-            <AntiforgeryToken />
-            <button type="submit" class="mud-nav-link mud-ripple">Logout</button>
-        </form>
+        @if (context.User.IsInRole("Employer"))
+        {
+            <MudNavLink Href="/EmployerDashboard" Icon="@Icons.Material.Filled.Dashboard" IconColor="Color.Info">
+                DASHBOARD
+            </MudNavLink>
+        }
+        else if (context.User.IsInRole("Admin"))
+        {
+            <MudNavLink Href="/ManageJobs" Icon="@Icons.Material.Filled.AdminPanelSettings" IconColor="Color.Warning">
+                ADMIN_TERMINAL
+            </MudNavLink>
+        }
     </Authorized>
-    <NotAuthorized>
-        <MudNavLink href="/Account/Login" Icon="@Icons.Material.Filled.Login">Login</MudNavLink>
-    </NotAuthorized>
 </AuthorizeView>
-

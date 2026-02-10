@@ -1,0 +1,55 @@
+@page "/Employer/PostJob"
+@attribute [Authorize(Roles = "Employer")]
+@inject JobService JobService
+@inject NavigationManager Nav
+@inject AuthenticationStateProvider AuthProvider
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Medium" Class="mt-10">
+    <MudPaper Class="pa-8" Elevation="3">
+        <MudText Typo="Typo.h4" Class="mb-6">POST_NEW_JOB</MudText>
+        
+        <EditForm Model="@_model" OnValidSubmit="HandleSubmit">
+            <DataAnnotationsValidator />
+            <MudGrid>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Job Title" @bind-Value="_model.Title" For="@(() => _model.Title)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Company" @bind-Value="_model.Company" For="@(() => _model.Company)" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField Label="Description" @bind-Value="_model.Description" Lines="5" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Location" @bind-Value="_model.Location" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" md="6">
+                    <MudTextField Label="Salary Range" @bind-Value="_model.Salary" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" class="d-flex justify-end gap-4">
+                    <MudButton Href="/EmployerDashboard" Variant="Variant.Outlined">Cancel</MudButton>
+                    <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Post Job</MudButton>
+                </MudItem>
+            </MudGrid>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private JobPosting _model = new();
+
+    private async Task HandleSubmit()
+    {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (userId != null)
+        {
+            _model.OwnerId = userId; // Attach the job to the logged-in Employer
+            await JobService.CreateJobAsync(_model);
+            Snackbar.Add("Job Posted Successfully!", Severity.Success);
+            Nav.NavigateTo("/EmployerDashboard");
+        }
+    }
+}
