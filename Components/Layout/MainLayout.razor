@@ -16,12 +16,23 @@
     <MudSpacer />
     <AuthorizeView>
     <Authorized>
-        @* The Dashboard Link *@
-        <MudButton Href="/ManageJobs" 
-                   Variant="Variant.Text" 
-                   Style="color: #00f0ff; font-family: monospace; border: 1px solid #00f0ff; margin-right: 15px;">
-            [ADMIN_TERMINAL]
-        </MudButton>
+        @* Dynamic Button: Switches based on Role *@
+        @if (context.User.IsInRole("Employer"))
+        {
+            <MudButton Href="/Employer/Dashboard" 
+                       Variant="Variant.Text" 
+                       Style="color: #00f0ff; font-family: monospace; border: 1px solid #00f0ff; margin-right: 15px;">
+                [DASHBOARD]
+            </MudButton>
+        }
+        else
+        {
+            <MudButton Href="/Admin/ManageJobs" 
+                       Variant="Variant.Text" 
+                       Style="color: #00f0ff; font-family: monospace; border: 1px solid #00f0ff; margin-right: 15px;">
+                [ADMIN_TERMINAL]
+            </MudButton>
+        }
 
         <MudText Typo="Typo.body1" Class="mr-4">
             Welcome, <b>@context.User.Identity?.Name</b>
@@ -34,7 +45,7 @@
     </Authorized>
     <NotAuthorized>
         <MudButton href="/Login" Variant="Variant.Filled" Color="Color.Primary">
-            Log in
+            LOGIN
         </MudButton>
     </NotAuthorized>
 </AuthorizeView>

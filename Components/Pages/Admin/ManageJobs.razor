@@ -1,10 +1,11 @@
-@page "/ManageJobs"
-@using findajob.Models
+@page "/Admin/ManageJobs"
 @using findajob.Services
-@using Microsoft.AspNetCore.Authorization
-@attribute [Authorize]
+@using findajob.Models
+@using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
 @inject JobService JobService
 @inject ISnackbar Snackbar
+@inject AuthenticationStateProvider AuthProvider
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
     <MudText Typo="Typo.h3" Style="color: #00f0ff; font-weight: 900; letter-spacing: 5px;" Class="mb-6">
@@ -72,56 +73,71 @@
 
 @code {
     private List<JobPosting> _jobs = new();
-    private JobPosting _model = new(); // Replaces _newJob
+    private JobPosting _model = new();
+    private string? currentUserId;
+    private bool _isAdmin;
 
     protected override async Task OnInitializedAsync()
     {
+        var authState = await AuthProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        
+        _isAdmin = user.IsInRole("Admin");
+        currentUserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
         await LoadData();
     }
 
     private async Task LoadData()
     {
-        _jobs = await JobService.GetJobsAsync();
+        if (_isAdmin)
+        {
+            // Monkey (Admin) sees everything
+            _jobs = await JobService.GetJobsAsync();
+        }
+        else if (currentUserId != null)
+        {
+            // Regular employers only see their own
+            _jobs = await JobService.GetJobsByOwnerAsync(currentUserId);
+        }
     }
 
     private async Task LoadJobForEdit(int id)
     {
-        // Fetch the specific job and copy it to the form model
         var job = await JobService.GetJobByIdAsync(id);
         if (job != null)
         {
-            _model = job; 
-            StateHasChanged(); // Refresh UI to show data in textboxes
+            _model = job;
+            StateHasChanged();
         }
     }
 
-    private void ResetForm()
-    {
-        _model = new JobPosting(); // Clear the form
-    }
+    private void ResetForm() => _model = new JobPosting();
 
     private async Task HandleSave()
     {
+        if (string.IsNullOrEmpty(currentUserId)) return;
+
         if (_model.Id == 0)
         {
-            // ID is 0, so it's a NEW job
+            _model.OwnerId = currentUserId; 
             await JobService.CreateJobAsync(_model);
             Snackbar.Add("ENTRY_CREATED", Severity.Success);
         }
         else
         {
-            // ID exists, so it's an UPDATE
-            await JobService.UpdateJobAsync(_model);
+            // Admin can edit any job; Employer only their own
+            await JobService.UpdateJobAsync(_model, currentUserId, _isAdmin);
             Snackbar.Add("ENTRY_UPDATED", Severity.Success);
         }
         
-        _model = new(); // Reset form
-        await LoadData(); // Refresh list
+        _model = new(); 
+        await LoadData();
     }
 
     private async Task ConfirmDelete(int id)
     {
-        await JobService.DeleteJobAsync(id);
+        await JobService.DeleteJobAsync(id, currentUserId, _isAdmin);
         await LoadData();
         Snackbar.Add("RECORD_DELETED", Severity.Warning);
     }

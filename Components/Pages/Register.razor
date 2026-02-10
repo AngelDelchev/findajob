@@ -1,0 +1,59 @@
+@page "/register"
+@using Microsoft.AspNetCore.Identity
+@using findajob.Models
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-10">
+    <MudPaper Class="pa-8" Elevation="3">
+        <MudText Typo="Typo.h4" Class="mb-4">JOIN_THE_TERMINAL</MudText>
+        <EditForm Model="@_model" OnValidSubmit="HandleRegister">
+            <DataAnnotationsValidator />
+            <MudTextField Label="Email" @bind-Value="_model.Email" Required="true" />
+            <MudTextField Label="Password" @bind-Value="_model.Password" InputType="InputType.Password" Required="true" />
+            <MudSelect T="string" Label="Access Level" @bind-Value="_model.Role" Required="true">
+                <MudSelectItem Value="@("Employer")">Employer (Boss)</MudSelectItem>
+                <MudSelectItem Value="@("Admin")">System Admin (Monkey)</MudSelectItem>
+            </MudSelect>
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mt-6">
+                INITIALIZE_ACCOUNT
+            </MudButton>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private RegisterModel _model = new();
+
+    private async Task HandleRegister()
+    {
+        var user = new ApplicationUser { UserName = _model.Email, Email = _model.Email };
+        var result = await UserManager.CreateAsync(user, _model.Password);
+
+        if (result.Succeeded)
+        {
+            // Assign the selected role!
+            await UserManager.AddToRoleAsync(user, _model.Role);
+            
+            await SignInManager.SignInAsync(user, isPersistent: false);
+            Snackbar.Add("ACCOUNT_READY", Severity.Success);
+            
+            // Redirect based on role
+            if (_model.Role == "Admin") Nav.NavigateTo("/Admin/ManageJobs");
+            else Nav.NavigateTo("/EmployerDashboard");
+        }
+        else
+        {
+            foreach (var error in result.Errors) Snackbar.Add(error.Description, Severity.Error);
+        }
+    }
+
+    public class RegisterModel
+    {
+        public string Email { get; set; } = "";
+        public string Password { get; set; } = "";
+        public string Role { get; set; } = "Employer";
+    }
+}

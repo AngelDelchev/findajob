@@ -17,6 +17,35 @@ namespace findajob.Migrations
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.2");
 
+            modelBuilder.Entity("JobApplication", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ApplicantEmail")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ApplicantName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AppliedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("JobId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("JobApplications");
+                });
+
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
                     b.Property<string>("Id")
@@ -218,35 +247,6 @@ namespace findajob.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
-            modelBuilder.Entity("findajob.Models.JobApplication", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ApplicantEmail")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("ApplicantId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("AppliedAt")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("JobId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("ResumeUrl")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("JobApplications");
-                });
-
             modelBuilder.Entity("findajob.Models.JobPosting", b =>
                 {
                     b.Property<int>("Id")
@@ -271,6 +271,10 @@ namespace findajob.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Location")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("OwnerId")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -278,7 +282,8 @@ namespace findajob.Migrations
                     b.Property<DateTime>("PostedDate")
                         .HasColumnType("TEXT");
 
-                    b.Property<decimal>("Salary")
+                    b.Property<string>("Salary")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Title")

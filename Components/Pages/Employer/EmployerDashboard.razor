@@ -2,9 +2,19 @@
 @attribute [Authorize]
 @inject JobService JobService
 @inject AuthenticationStateProvider AuthState
+@inject NavigationManager Nav
+
+<div class="d-flex justify-space-between align-center mb-6">
+    <MudText Typo="Typo.h4" Style="color: #00f0ff; font-weight: bold;">EMPLOYER_CONTROL_PANEL</MudText>
+    <MudButton Variant="Variant.Filled" 
+               Color="Color.Success" 
+               StartIcon="@Icons.Material.Filled.Add"
+               OnClick="OpenCreateDialog">
+        POST_NEW_JOB
+    </MudButton>
+</div>
 
 <MudContainer MaxWidth="MaxWidth.Large" Class="mt-10">
-    <MudText Typo="Typo.h4" Style="color: #00f0ff; font-weight: bold;" Class="mb-6">EMPLOYER_CONTROL_PANEL</MudText>
 
     <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6">
         <MudTabPanel Text="MY_LISTINGS">
@@ -44,18 +54,36 @@
 @code {
     private List<JobPosting> _myJobs = new();
     private List<JobApplication> _apps = new();
+    private string? _currentUserId;
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthState.GetAuthenticationStateAsync();
-        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        var user = authState.User;
+        
+        _currentUserId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
 
-        if (userId != null)
+        if (_currentUserId != null)
         {
-            _myJobs = await JobService.GetEmployerJobsAsync(userId);
-            _apps = await JobService.GetApplicationsForEmployerAsync(userId);
+            // FIX: Changed GetEmployerJobsAsync to GetJobsByOwnerAsync
+            _myJobs = await JobService.GetJobsByOwnerAsync(_currentUserId);
+            _apps = await JobService.GetApplicationsForEmployerAsync(_currentUserId);
         }
     }
 
-    private async Task Delete(int id) { /* Call Service Delete */ }
+    private async Task Delete(int id) 
+    { 
+        // FIX: Passes the required 2 arguments to the service
+        await JobService.DeleteJobAsync(id, _currentUserId);
+        
+        // Refresh the list after deletion
+        if (_currentUserId != null)
+        {
+            _myJobs = await JobService.GetJobsByOwnerAsync(_currentUserId);
+        }
+    }
+    private void OpenCreateDialog()
+      {
+        Nav.NavigateTo("/Employer/PostJob");
+      }
 }
