@@ -1,4 +1,5 @@
 @page "/Admin/ManageJobs"
+@attribute [Authorize(Roles = "Admin")]
 @using findajob.Services
 @using findajob.Models
 @using Microsoft.AspNetCore.Components.Authorization

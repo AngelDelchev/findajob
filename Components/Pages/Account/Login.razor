@@ -22,7 +22,7 @@
                     @* Change name to 'loginName' and type to 'text' *@
                     <input name="loginName" 
                            type="text" 
-                           placeholder="monkeyinthehat"
+                           placeholder="username"
                            style="width:100%; background:#121212; color:white; border:1px solid #333; padding:12px; font-family: monospace;" 
                            required />
                 </div>
@@ -36,8 +36,14 @@
                 </div>
 
                 <button type="submit" style="width:100%; background:#00f0ff; color:black; font-weight:900; padding:15px; border:none; cursor:pointer; font-family: monospace;">
-                    INITIALIZE_SESSION
+                    LOG_IN
                 </button>
+
+                <div class="d-flex justify-center mt-4">
+                <MudText Typo="Typo.body2">
+                    Don't have an account? <MudLink Href="/Register" Color="Color.Secondary">Register here</MudLink>
+                </MudText>
+            </div>
             </form>
         </MudStack>
     </MudPaper>

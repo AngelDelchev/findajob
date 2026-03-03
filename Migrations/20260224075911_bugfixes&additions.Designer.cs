@@ -11,8 +11,8 @@ using findajob.Data;
 namespace findajob.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    [Migration("20260210104917_reset")]
-    partial class reset
+    [Migration("20260224075911_bugfixes&additions")]
+    partial class bugfixesadditions
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -37,8 +37,16 @@ namespace findajob.Migrations
                     b.Property<DateTime>("AppliedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("JobId")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("JobTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Message")
                         .IsRequired()
@@ -198,6 +206,14 @@ namespace findajob.Migrations
 
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");

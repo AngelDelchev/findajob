@@ -15,7 +15,7 @@ public static class DbInitializer
         var roleManager = serviceProvider.GetRequiredService<RoleManager<IdentityRole>>();
 
         // 1. Ensure Roles exist
-        string[] roles = { "Admin", "Employer", "User" };
+        string[] roles = { "Admin", "Employer", "Employee" };
         foreach (var role in roles)
         {
             if (!await roleManager.RoleExistsAsync(role))

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using findajob.Data;
 
@@ -10,9 +11,11 @@ using findajob.Data;
 namespace findajob.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260223065640_reset420")]
+    partial class reset420
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.2");
@@ -34,22 +37,10 @@ namespace findajob.Migrations
                     b.Property<DateTime>("AppliedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("CompanyName")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("JobId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("JobTitle")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("Message")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserId")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -207,14 +198,6 @@ namespace findajob.Migrations
 
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("FirstName")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("LastName")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
 
                     b.Property<bool>("LockoutEnabled")
                         .HasColumnType("INTEGER");

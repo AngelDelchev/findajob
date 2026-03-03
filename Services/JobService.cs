@@ -116,7 +116,18 @@ namespace findajob.Services
         {
             using var context = await _factory.CreateDbContextAsync();
             context.JobApplications.Add(application);
+
             await context.SaveChangesAsync();
+        }
+
+        public async Task<List<JobApplication>> GetApplicationsForUserAsync(string userId)
+        {
+            using var context = await _factory.CreateDbContextAsync();
+
+            return await context
+                .JobApplications.Where(a => a.UserId == userId)
+                .OrderByDescending(a => a.AppliedAt)
+                .ToListAsync();
         }
     }
 }

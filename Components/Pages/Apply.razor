@@ -1,5 +1,9 @@
 @page "/apply/{JobId:int}"
+@using findajob.Models
+@using findajob.Services
+@using System.Security.Claims
 @inject JobService JobService
+@inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
@@ -17,25 +21,47 @@
 </MudContainer>
 
 @code {
-    [Parameter] public int JobId { get; set; } // Fixes CS1061
-    private ApplicationModel _model = new(); // Fixes CS0103
+    [Parameter] public int JobId { get; set; }
+    private ApplicationModel _model = new();
+    private JobPosting? _job;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _job = await JobService.GetJobByIdAsync(JobId);
+    }
 
     private async Task HandleSubmit()
     {
-        var application = new JobApplication
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        var user = authState.User;
+        var userId = user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_job == null)
+        {
+            Snackbar.Add("Job not found.", Severity.Error);
+            return;
+        }
+
+        if (userId == null)
+        {
+            Snackbar.Add("You must be logged in to apply.", Severity.Error);
+            return;
+        }
+
+        var newApp = new JobApplication
         {
             JobId = JobId,
+            UserId = userId,
+            JobTitle = _job.Title,
+            CompanyName = _job.Company,
             ApplicantName = _model.Name,
             ApplicantEmail = _model.Email,
             Message = _model.Message,
             AppliedAt = DateTime.UtcNow
         };
 
-        // Fixes CS0120 - call on the injected instance
-        await JobService.SubmitApplicationAsync(application);
-        
-        Snackbar.Add("Application Sent!", Severity.Success);
-        Nav.NavigateTo("/");
+        await JobService.SubmitApplicationAsync(newApp);
+        Nav.NavigateTo("/Employee/Dashboard");
     }
 
     public class ApplicationModel

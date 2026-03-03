@@ -103,10 +103,26 @@ app.MapPost(
         return Results.Redirect("/");
     }
 );
+app.MapPost(
+    "/account/login-handoff",
+    async (string email, string password, SignInManager<ApplicationUser> signInManager) =>
+    {
+        // This is a standard HTTP POST, so it can write cookies!
+        var result = await signInManager.PasswordSignInAsync(
+            email,
+            password,
+            isPersistent: false,
+            lockoutOnFailure: false
+        );
+        return result.Succeeded
+            ? Results.LocalRedirect("/")
+            : Results.Redirect("/login?error=true");
+    }
+);
 using (var scope = app.Services.CreateScope())
 {
     var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var roles = new[] { "Admin", "Employer" };
+    var roles = new[] { "Admin", "Employer", "Employee" };
 
     foreach (var role in roles)
     {
