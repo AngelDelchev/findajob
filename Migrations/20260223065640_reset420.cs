@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace findajob.Migrations
 {
     /// <inheritdoc />
-    public partial class reset : Migration
+    public partial class reset420 : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

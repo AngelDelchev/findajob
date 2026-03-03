@@ -1,0 +1,112 @@
+@page "/Register"
+@using Microsoft.AspNetCore.Identity
+@using System.ComponentModel.DataAnnotations
+@using findajob.Models
+@inject UserManager<ApplicationUser> UserManager
+@inject IJSRuntime JS
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-10">
+    @* Added dark background and cyan border to match your signature look *@
+    <MudPaper Class="pa-8" Elevation="3" Style="background-color: #0a0a0a; border: 1px solid #00bcd4;">
+        <MudText Typo="Typo.h4" Class="mb-6" Style="color: #00bcd4; font-family: monospace; font-weight: bold;">
+            CREATE_ACCOUNT
+        </MudText>
+        
+        @if (!string.IsNullOrEmpty(ErrorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@ErrorMessage</MudAlert>
+        }
+
+        <EditForm Model="@Model" OnValidSubmit="HandleRegister">
+            <DataAnnotationsValidator />
+            
+            <div class="d-flex gap-4">
+                <MudTextField Label="First Name" @bind-Value="Model.FirstName" Required="true" 
+                              Style="color: white;" Class="mb-4" />
+                <MudTextField Label="Last Name" @bind-Value="Model.LastName" Required="true" 
+                              Style="color: white;" Class="mb-4" />
+            </div>
+
+            <MudTextField Label="Email Address" @bind-Value="Model.Email" Required="true" 
+                          Style="color: white;" Class="mb-4" />
+            
+            <MudTextField Label="Password" @bind-Value="Model.Password" InputType="InputType.Password" 
+                          Required="true" Style="color: white;" Class="mb-4" />
+                          
+            <MudTextField Label="Confirm Password" @bind-Value="Model.ConfirmPassword" InputType="InputType.Password" 
+                          Required="true" Style="color: white;" Class="mb-4" />
+            
+            <MudSelect T="string" Label="[ACCOUNT TYPE]" @bind-Value="Model.Role" Required="true" 
+                       Style="color: #00bcd4;" Class="mb-6">
+                <MudSelectItem Value="@("Employee")">Job Seeker</MudSelectItem>
+                <MudSelectItem Value="@("Employer")">Company</MudSelectItem>
+            </MudSelect>
+            
+            <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" FullWidth="true" 
+                       Style="background-color: #00bcd4; color: #0a0a0a; font-weight: bold; font-family: monospace;">
+                INITIALIZE_ACCOUNT
+            </MudButton>
+
+            <div class="d-flex justify-center mt-6">
+                <MudText Typo="Typo.body2" Style="color: gray;">
+                    Already have an account? <MudLink Href="/login" Style="color: #00bcd4;">Log in here</MudLink>
+                </MudText>
+            </div>
+        </EditForm>
+    </MudPaper>
+</MudContainer>
+
+@* The hidden handoff form for logging in safely *@
+<form id="handoff-form" action="/account/login-handoff" method="post" style="display:none">
+    <input type="hidden" name="email" value="@Model.Email" />
+    <input type="hidden" name="password" value="@Model.Password" />
+</form>
+
+@code {
+    private RegisterModel Model { get; set; } = new();
+    private string? ErrorMessage;
+
+    private async Task HandleRegister()
+    {
+        var user = new ApplicationUser 
+        { 
+            UserName = Model.Email, 
+            Email = Model.Email,
+            FirstName = Model.FirstName,
+            LastName = Model.LastName
+        };
+        
+        var result = await UserManager.CreateAsync(user, Model.Password);
+
+        if (result.Succeeded)
+        {
+            await UserManager.AddToRoleAsync(user, Model.Role);
+            // Trigger the hidden form to login
+            await JS.InvokeVoidAsync("document.getElementById('handoff-form').submit()");
+        }
+        else
+        {
+            ErrorMessage = string.Join(" | ", result.Errors.Select(e => e.Description));
+        }
+    }
+
+    public class RegisterModel
+    {
+        [Required]
+        public string FirstName { get; set; } = "";
+        
+        [Required]
+        public string LastName { get; set; } = "";
+        
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+        
+        [Required, MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
+        public string Password { get; set; } = "";
+        
+        [Required, Compare(nameof(Password), ErrorMessage = "Passwords do not match.")]
+        public string ConfirmPassword { get; set; } = "";
+        
+        public string Role { get; set; } = "Employee";
+    }
+}

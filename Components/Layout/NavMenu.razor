@@ -20,15 +20,21 @@
     <Authorized>
         @if (context.User.IsInRole("Employer"))
         {
-            <MudNavLink Href="/EmployerDashboard" Icon="@Icons.Material.Filled.Dashboard" IconColor="Color.Info">
+            <MudNavLink Href="/Employer/EmployerDashboard" Icon="@Icons.Material.Filled.Dashboard" IconColor="Color.Info">
                 DASHBOARD
             </MudNavLink>
         }
         else if (context.User.IsInRole("Admin"))
         {
-            <MudNavLink Href="/ManageJobs" Icon="@Icons.Material.Filled.AdminPanelSettings" IconColor="Color.Warning">
+            <MudNavLink Href="/Admin/ManageJobs" Icon="@Icons.Material.Filled.AdminPanelSettings" IconColor="Color.Warning">
                 ADMIN_TERMINAL
             </MudNavLink>
         }
+        else if (context.User.IsInRole("Employee"))
+        {
+            <MudNavLink Href="/Employee/Dashboard" Icon="@Icons.Material.Filled.AdminPanelSettings" IconColor"Color.Warning">
+              DASHBOARD
+            </MudNavLink>
+          }
     </Authorized>
 </AuthorizeView>

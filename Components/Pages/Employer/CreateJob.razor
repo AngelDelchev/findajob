@@ -28,7 +28,7 @@
                     <MudTextField Label="Salary Range" @bind-Value="_model.Salary" Variant="Variant.Outlined" />
                 </MudItem>
                 <MudItem xs="12" class="d-flex justify-end gap-4">
-                    <MudButton Href="/EmployerDashboard" Variant="Variant.Outlined">Cancel</MudButton>
+                    <MudButton Href="/Employer/Dashboard" Variant="Variant.Outlined">Cancel</MudButton>
                     <MudButton ButtonType="ButtonType.Submit" Variant="Variant.Filled" Color="Color.Primary">Post Job</MudButton>
                 </MudItem>
             </MudGrid>
@@ -49,7 +49,7 @@
             _model.OwnerId = userId; // Attach the job to the logged-in Employer
             await JobService.CreateJobAsync(_model);
             Snackbar.Add("Job Posted Successfully!", Severity.Success);
-            Nav.NavigateTo("/EmployerDashboard");
+            Nav.NavigateTo("/Employer/Dashboard");
         }
     }
 }

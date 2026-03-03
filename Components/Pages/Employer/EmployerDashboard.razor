@@ -3,6 +3,7 @@
 @inject JobService JobService
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager Nav
+@inject IDialogService DialogService
 
 <div class="d-flex justify-space-between align-center mb-6">
     <MudText Typo="Typo.h4" Style="color: #00f0ff; font-weight: bold;">EMPLOYER_CONTROL_PANEL</MudText>
@@ -40,15 +41,22 @@
                     <MudTh>APPLICANT</MudTh>
                     <MudTh>JOB_ID</MudTh>
                     <MudTh>DATE</MudTh>
-                </HeaderContent>
+                    <MudTh>ACTIONS</MudTh> </HeaderContent>
                 <RowTemplate>
                     <MudTd>@context.ApplicantEmail</MudTd>
                     <MudTd>@context.JobId</MudTd>
                     <MudTd>@context.AppliedAt.ToShortDateString()</MudTd>
+                    <MudTd>
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" 
+                                   Style="background-color: #00bcd4; color: #0a0a0a; font-family: monospace;" 
+                                   OnClick="@(() => ShowApplicationDetails(context.ApplicantName, context.ApplicantEmail, context.Message))">
+                            VIEW_DETAILS
+                        </MudButton>
+                    </MudTd>
                 </RowTemplate>
             </MudTable>
-        </MudTabPanel>
-    </MudTabs>
+        </MudTabPanel>    
+      </MudTabs>
 </MudContainer>
 
 @code {
@@ -71,6 +79,22 @@
         }
     }
 
+    private async Task ShowApplicationDetails(string name, string email, string message)
+{
+    var markupMessage = new MarkupString(
+        $@"<div style='color: #00f0ff; font-family: monospace; padding: 10px;'>
+            <b>APPLICANT EMAIL:</b> <span style='color: white;'>{email}</span><br/><br/>
+            <b>TRANSMISSION LOG (MESSAGE):</b><br/>
+            <span style='color: white;'>{message}</span>
+        </div>"
+    );
+
+    await DialogService.ShowMessageBox(
+        title: $"APPLICATION FROM: {name.ToUpper()}",
+        markupMessage: markupMessage,
+        yesText: "CLOSE_FILE" // This replaces the default "OK" button
+    );
+}
     private async Task Delete(int id) 
     { 
         // FIX: Passes the required 2 arguments to the service
