@@ -1,0 +1,87 @@
+@page "/Employee/Dashboard"
+@attribute [Authorize(Roles = "Employee")]
+@using findajob.Models
+@using findajob.Services
+@inject JobService JobService
+@inject AuthenticationStateProvider AuthState
+@inject IDialogService DialogService
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-10">
+    <MudText Typo="Typo.h4" Style="color: #00f0ff; font-weight: bold; font-family: monospace;" Class="mb-6">
+        APPLICATION_LOG
+    </MudText>
+
+    <MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-6" Style="background: #0a0a0a; border: 1px solid #333;">
+        <MudTabPanel Text="ACTIVE_APPLICATIONS">
+            @if (_userApplications == null || !_userApplications.Any())
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Style="color: #00f0ff; border-color: #00f0ff;">
+                    NO_DATA_FOUND: You haven't applied to any jobs yet.
+                </MudAlert>
+            }
+            else
+            {
+                <MudTable Items="@_userApplications" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Style="background: transparent; color: white;">
+                    <HeaderContent>
+                        <MudTh Style="color: #00f0ff;">JOB_TITLE</MudTh>
+                        <MudTh Style="color: #00f0ff;">ORGANIZATION</MudTh>
+                        <MudTh Style="color: #00f0ff;">SENT_DATE</MudTh>
+                        <MudTh Style="color: #00f0ff;">STATUS</MudTh>
+                        <MudTh Style="color: #00f0ff;">ACTIONS</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="JOB_TITLE">@context.JobTitle</MudTd>
+                        <MudTd DataLabel="ORGANIZATION">@context.CompanyName</MudTd>
+                        <MudTd DataLabel="SENT_DATE">@context.AppliedAt.ToShortDateString()</MudTd>
+                        <MudTd DataLabel="STATUS">
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Style="color: #00f0ff; border: 1px solid #00f0ff;">
+                                PENDING_REVIEW
+                            </MudChip>
+                        </MudTd>
+                        <MudTd>
+                            <MudButton Variant="Variant.Outlined" 
+                                       Style="color: #00f0ff; border-color: #00f0ff; font-family: monospace;"
+                                       OnClick="@(() => ViewMyApplication(context))">
+                                VIEW_SUBMISSION
+                            </MudButton>
+                        </MudTd>
+                    </RowTemplate>
+                </MudTable>
+            }
+        </MudTabPanel>
+    </MudTabs>
+</MudContainer>
+
+@code {
+    private List<JobApplication> _userApplications = new();
+    private string? _currentUserId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthState.GetAuthenticationStateAsync();
+        _currentUserId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_currentUserId != null)
+        {
+            _userApplications = await JobService.GetApplicationsForUserAsync(_currentUserId);
+        }
+    }
+
+    private async Task ViewMyApplication(JobApplication app)
+    {
+        var markupMessage = new MarkupString(
+            $@"<div style='color: #00f0ff; font-family: monospace; padding: 10px;'>
+                <b>JOB:</b> <span style='color: white;'>{app.JobTitle}</span><br/>
+                <b>SENT TO:</b> <span style='color: white;'>{app.CompanyName}</span><br/><br/>
+                <b>YOUR_MESSAGE:</b><br/>
+                <span style='color: white;'>{app.Message}</span>
+            </div>"
+        );
+
+        await DialogService.ShowMessageBox(
+            title: "SUBMISSION_DETAILS",
+            markupMessage: markupMessage,
+            yesText: "CLOSE_LOG"
+        );
+    }
+}
