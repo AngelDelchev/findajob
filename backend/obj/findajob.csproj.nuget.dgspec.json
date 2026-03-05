@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/hakari/code/findajob/findajob.csproj": {}
+    "/home/hakari/code/findajob/backend/findajob.csproj": {}
   },
   "projects": {
-    "/home/hakari/code/findajob/findajob.csproj": {
+    "/home/hakari/code/findajob/backend/findajob.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/hakari/code/findajob/findajob.csproj",
+        "projectUniqueName": "/home/hakari/code/findajob/backend/findajob.csproj",
         "projectName": "findajob",
-        "projectPath": "/home/hakari/code/findajob/findajob.csproj",
+        "projectPath": "/home/hakari/code/findajob/backend/findajob.csproj",
         "packagesPath": "/home/hakari/.nuget/packages/",
-        "outputPath": "/home/hakari/code/findajob/obj/",
+        "outputPath": "/home/hakari/code/findajob/backend/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/hakari/.nuget/NuGet/NuGet.Config"

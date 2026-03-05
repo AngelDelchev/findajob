@@ -45,7 +45,6 @@ builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Cookie.HttpOnly = true;
     options.Cookie.SameSite = SameSiteMode.Lax;
-
     options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
         ? CookieSecurePolicy.None
         : CookieSecurePolicy.SameAsRequest;
@@ -64,10 +63,6 @@ builder.Services.AddCors(options =>
         }
     );
 });
-
-// Temporary: keep Razor during migration
-builder.Services.AddRazorComponents().AddInteractiveServerComponents();
-builder.Services.AddCascadingAuthenticationState();
 
 var app = builder.Build();
 
@@ -95,8 +90,7 @@ using (var scope = app.Services.CreateScope())
 
 app.MapControllers();
 
-// Temporary during migration
-app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
+app.MapGet("/", () => Results.Ok("findajob API is running"));
 
 using (var scope = app.Services.CreateScope())
 {
