@@ -1,13 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "ZaxxOF+BKi0=",
+  "dgSpecHash": "zpMS4ZuDRfA=",
   "success": true,
   "projectFilePath": "/home/hakari/code/findajob/backend/findajob.csproj",
   "expectedPackageFiles": [
     "/home/hakari/.nuget/packages/fluentemail.core/3.0.0/fluentemail.core.3.0.0.nupkg.sha512",
     "/home/hakari/.nuget/packages/fluentemail.smtp/3.0.0/fluentemail.smtp.3.0.0.nupkg.sha512",
     "/home/hakari/.nuget/packages/humanizer.core/2.14.1/humanizer.core.2.14.1.nupkg.sha512",
-    "/home/hakari/.nuget/packages/microsoft.aspnetcore.app.internal.assets/10.0.3/microsoft.aspnetcore.app.internal.assets.10.0.3.nupkg.sha512",
     "/home/hakari/.nuget/packages/microsoft.aspnetcore.authorization/10.0.2/microsoft.aspnetcore.authorization.10.0.2.nupkg.sha512",
     "/home/hakari/.nuget/packages/microsoft.aspnetcore.components/10.0.2/microsoft.aspnetcore.components.10.0.2.nupkg.sha512",
     "/home/hakari/.nuget/packages/microsoft.aspnetcore.components.analyzers/10.0.2/microsoft.aspnetcore.components.analyzers.10.0.2.nupkg.sha512",
@@ -70,7 +69,7 @@
     "/home/hakari/.nuget/packages/system.composition.hosting/9.0.0/system.composition.hosting.9.0.0.nupkg.sha512",
     "/home/hakari/.nuget/packages/system.composition.runtime/9.0.0/system.composition.runtime.9.0.0.nupkg.sha512",
     "/home/hakari/.nuget/packages/system.composition.typedparts/9.0.0/system.composition.typedparts.9.0.0.nupkg.sha512",
-    "/home/hakari/.nuget/packages/microsoft.aspnetcore.app.ref/10.0.3/microsoft.aspnetcore.app.ref.10.0.3.nupkg.sha512"
+    "/home/hakari/.nuget/packages/microsoft.aspnetcore.app.ref/10.0.4/microsoft.aspnetcore.app.ref.10.0.4.nupkg.sha512"
   ],
   "logs": []
 }

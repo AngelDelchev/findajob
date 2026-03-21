@@ -1,3 +1,5 @@
+using System.Linq;
+using findajob.Data;
 using findajob.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -11,19 +13,25 @@ public class AuthController : ControllerBase
 {
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ApplicationDbContext _context;
 
     public AuthController(
         SignInManager<ApplicationUser> signInManager,
-        UserManager<ApplicationUser> userManager
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext context
     )
     {
         _signInManager = signInManager;
         _userManager = userManager;
+        _context = context;
     }
 
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
+        if (request.Password != request.ConfirmPassword)
+            return BadRequest(new { message = "Passwords do not match." });
+
         var existingUser = await _userManager.FindByEmailAsync(request.Email);
         if (existingUser != null)
         {
@@ -55,6 +63,30 @@ public class AuthController : ControllerBase
 
         var role = string.IsNullOrWhiteSpace(request.Role) ? "Employee" : request.Role;
         await _userManager.AddToRoleAsync(user, role);
+
+        _context.UserProfiles.Add(
+            new UserProfile
+            {
+                UserId = user.Id,
+                FirstName = request.FirstName,
+                LastName = request.LastName,
+                PhoneNumber = request.PhoneNumber,
+                ProfessionalTitle = "",
+                CompanyName = "",
+                Bio = "",
+                AddressLine1 = request.AddressLine1,
+                AddressLine2 = request.AddressLine2,
+                City = request.City,
+                PostalCode = request.PostalCode,
+                Country = request.Country,
+                AvatarFileName = "",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+            }
+        );
+
+        await _context.SaveChangesAsync();
+        await _context.SaveChangesAsync();
 
         await _signInManager.SignInAsync(user, isPersistent: true);
 
@@ -143,11 +175,22 @@ public class AuthController : ControllerBase
     {
         public string Email { get; set; } = "";
         public string Password { get; set; } = "";
+        public string ConfirmPassword { get; set; } = "";
+
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
+        public string PhoneNumber { get; set; } = "";
+
+        public string AddressLine1 { get; set; } = "";
+        public string AddressLine2 { get; set; } = "";
+        public string City { get; set; } = "";
+        public string PostalCode { get; set; } = "";
+        public string Country { get; set; } = "";
+
+        public string Role { get; set; } = "Employee";
+
         public string CompanyName { get; set; } = "";
         public string ProfessionalTitle { get; set; } = "";
-        public string Role { get; set; } = "Employee";
     }
 
     public class LoginRequest

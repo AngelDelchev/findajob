@@ -1,4 +1,3 @@
-using findajob.Components;
 using findajob.Data;
 using findajob.Models;
 using findajob.Services;
@@ -7,9 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var rootPath = Directory.GetCurrentDirectory();
-var dbPath = Path.Combine(rootPath, "findajob.db");
+var dbPath = Path.Combine(builder.Environment.ContentRootPath, "findajob.db");
 var connectionString = $"Data Source={dbPath}";
+Console.WriteLine($"[DB] {dbPath}");
 
 builder.Services.AddControllers();
 builder.Services.AddAuthorization();
@@ -83,27 +82,22 @@ app.UseAuthorization();
 
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    var services = scope.ServiceProvider;
+
+    var db = services.GetRequiredService<ApplicationDbContext>();
+
+    // Create tables (AspNetRoles/AspNetUsers/etc) if missing
+    await db.Database.MigrateAsync();
+
+    // SQLite perf PRAGMAs
     db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
     db.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");
-}
 
+    // Seed roles + base users
+    await DbInitializer.SeedRolesAndUsers(services);
+}
 app.MapControllers();
 
 app.MapGet("/", () => Results.Ok("findajob API is running"));
-
-using (var scope = app.Services.CreateScope())
-{
-    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-    var roles = new[] { "Admin", "Employer", "Employee" };
-
-    foreach (var role in roles)
-    {
-        if (!await roleManager.RoleExistsAsync(role))
-        {
-            await roleManager.CreateAsync(new IdentityRole(role));
-        }
-    }
-}
 
 app.Run();
