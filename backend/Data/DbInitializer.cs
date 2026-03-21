@@ -22,14 +22,14 @@ public static class DbInitializer
                 await roleManager.CreateAsync(new IdentityRole(role));
         }
 
-        // 2. Add Monkey (Admin)
-        var monkey = await userManager.FindByNameAsync("monkeyinthehat");
+        // 2. Add monkey (Admin)
+        var monkey = await userManager.FindByNameAsync("monkey");
         if (monkey == null)
         {
             monkey = new ApplicationUser
             {
-                UserName = "monkeyinthehat",
-                Email = "monkeyinthehat@findajob.com",
+                UserName = "monkey",
+                Email = "monkey@findajob.com",
                 EmailConfirmed = true,
                 CompanyName = "FindAJob Headquarters", // Setting custom prop
                 ProfessionalTitle = "System Overlord", // Setting custom prop
@@ -39,12 +39,12 @@ public static class DbInitializer
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(monkey, "Admin");
-                Console.WriteLine(">>> SEED: Monkey created successfully!");
+                Console.WriteLine(">>> SEED: Admin created successfully!");
             }
             else
             {
                 Console.WriteLine(
-                    ">>> SEED ERROR (Monkey): "
+                    ">>> SEED ERROR (Admin): "
                         + string.Join(", ", result.Errors.Select(e => e.Description))
                 );
             }

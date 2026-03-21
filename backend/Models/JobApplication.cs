@@ -9,6 +9,7 @@ namespace findajob.Models
         public string ApplicantEmail { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
         public DateTime AppliedAt { get; set; } = DateTime.UtcNow;
+        public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
         public string JobTitle { get; set; } = string.Empty;
         public string CompanyName { get; set; } = string.Empty;
         public string Status { get; set; } = "Pending";
