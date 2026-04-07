@@ -38,7 +38,7 @@ export default function AppShell({ children }: PropsWithChildren) {
 
   return (
     <Box sx={{ minHeight: '100vh' }}>
-      <AppBar position="sticky" elevation={0} sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+      <AppBar position="sticky" elevation={0} color="transparent" sx={{ borderBottom: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(10px)' }}>
         <Toolbar>
           <Typography
             component={RouterLink}
