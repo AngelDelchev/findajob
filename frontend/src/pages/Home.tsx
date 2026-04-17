@@ -12,6 +12,11 @@ import Grid from '@mui/material/Grid'
 import Paper from '@mui/material/Paper'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import Snackbar from '@mui/material/Snackbar'
+import Alert from '@mui/material/Alert'
+import IconButton from '@mui/material/IconButton'
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
+import BookmarkIcon from '@mui/icons-material/Bookmark'
 
 type JobPosting = {
   id: number
@@ -25,15 +30,20 @@ type JobPosting = {
 export default function Home() {
   const nav = useNavigate()
   const { user } = useAuth()
+  const isEmployee = !!user?.roles?.includes('Employee')
+
+  const [savedIds, setSavedIds] = useState<Set<number>>(new Set())
+  const [snack, setSnack] = useState<{ open: boolean; text: string; type: 'success' | 'info' | 'error' }>({
+    open: false,
+    text: '',
+    type: 'success'
+  })
 
   const [jobs, setJobs] = useState<JobPosting[]>([])
   const [loading, setLoading] = useState(true)
 
-  // IMPORTANT: input vs committed search (fixes the “title changes while typing” bug)
   const [searchInput, setSearchInput] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
-
-  const isEmployee = !!user?.roles?.includes('Employee')
 
   const loadJobs = async (term: string) => {
     setLoading(true)
@@ -56,6 +66,43 @@ export default function Home() {
     () => (searchTerm ? `Results for "${searchTerm}"` : 'Recent jobs'),
     [searchTerm]
   )
+
+  useEffect(() => {
+  const loadSaved = async () => {
+    if (!isEmployee) {
+      setSavedIds(new Set())
+      return
+    }
+    try {
+      const res = await api.get('/savedjobs/mine')
+      setSavedIds(new Set<number>(res.data.map((x: any) => x.jobPostingId)))
+    } catch {
+      setSavedIds(new Set())
+    }
+  }
+
+  void loadSaved()
+}, [isEmployee])
+
+  const toggleSave = async (jobId: number) => {
+  try {
+    if (savedIds.has(jobId)) {
+      await api.delete(`/savedjobs/${jobId}`)
+      const next = new Set(savedIds)
+      next.delete(jobId)
+      setSavedIds(next)
+      setSnack({ open: true, text: 'Removed from saved', type: 'info' })
+    } else {
+      await api.post('/savedjobs', { jobId })
+      const next = new Set(savedIds)
+      next.add(jobId)
+      setSavedIds(next)
+      setSnack({ open: true, text: 'Saved job', type: 'success' })
+    }
+  } catch {
+    setSnack({ open: true, text: 'Action failed', type: 'error' })
+  }
+}
 
   return (
     <Box>
@@ -118,19 +165,24 @@ export default function Home() {
                 </Typography>
               </CardContent>
 
-              <CardActions sx={{ px: 2, pb: 2 }}>
+              <CardActions sx={{ px: 2, pb: 2, display: 'flex', alignItems: 'center' }}>
                 <Button size="small" variant="outlined" component={RouterLink} to={`/job/${j.id}`}>
                   Details
                 </Button>
 
-                <Button
-                  size="small"
-                  variant="contained"
-                  disabled={!isEmployee}
-                  onClick={() => nav(`/apply/${j.id}`)}
-                >
+                <Button size="small" variant="contained" component={RouterLink} to={`/apply/${j.id}`}>
                   Apply
                 </Button>
+
+                {isEmployee ? (
+                <IconButton
+                  onClick={() => void toggleSave(j.id)}
+                  sx={{ marginLeft: 'auto' }}
+                  aria-label="save job"
+                >
+                {savedIds.has(j.id) ? <BookmarkIcon /> : <BookmarkBorderIcon />}
+                </IconButton>
+                ) : null}
               </CardActions>
             </Card>
           </Grid>
@@ -150,6 +202,22 @@ export default function Home() {
           </Typography>
         </Paper>
       ) : null}
+
+      <Snackbar
+      open={snack.open}
+      autoHideDuration={1600}
+      onClose={() => setSnack(s => ({ ...s, open: false }))}
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+    >
+      <Alert
+        severity={snack.type}
+        variant="filled"
+        onClose={() => setSnack(s => ({ ...s, open: false }))}
+      >
+        {snack.text}
+      </Alert>
+    </Snackbar>
     </Box>
+
   )
 }
