@@ -15,6 +15,7 @@ public class RegisterRequest
     public string City { get; set; } = "";
     public string PostalCode { get; set; } = "";
     public string Country { get; set; } = "";
+    public string CompanyName { get; set; } = "";
 
     public string Role { get; set; } = "Employee";
 }

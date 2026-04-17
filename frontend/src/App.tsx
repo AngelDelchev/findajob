@@ -4,6 +4,7 @@ import RequireRole from './components/RequireRole'
 import Home from './pages/Home'
 import Login from './pages/Login'
 import Register from './pages/Register'
+import RegisterEmployer from './pages/RegisterEmployer'
 import Admin from './pages/Admin'
 import Employee from './pages/Employee'
 import Employer from './pages/Employer'
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/register-employer" element={<RegisterEmployer />} />
 
         <Route path="/job/:id" element={<JobDetails />} />
         <Route
