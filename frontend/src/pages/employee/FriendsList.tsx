@@ -1,4 +1,5 @@
-import { useEffect, useState, MouseEvent } from 'react'
+import { useEffect, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { api } from '../../api'
 import { Link as RouterLink } from 'react-router-dom'
 import Box from '@mui/material/Box'
