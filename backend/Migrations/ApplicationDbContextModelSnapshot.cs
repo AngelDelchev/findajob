@@ -226,6 +226,31 @@ namespace findajob.Migrations
                     b.ToTable("AspNetUsers", (string)null);
                 });
 
+            modelBuilder.Entity("findajob.Models.BlockedUser", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BlockedId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BlockerId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlockerId", "BlockedId")
+                        .IsUnique();
+
+                    b.ToTable("BlockedUsers");
+                });
+
             modelBuilder.Entity("findajob.Models.CvDocument", b =>
                 {
                     b.Property<int>("Id")
@@ -266,6 +291,130 @@ namespace findajob.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("CvDocuments");
+                });
+
+            modelBuilder.Entity("findajob.Models.Education", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Degree")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EndYear")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FieldOfStudy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("School")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("StartYear")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Educations");
+                });
+
+            modelBuilder.Entity("findajob.Models.Experience", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Company")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsCurrent")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StartDate")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Experiences");
+                });
+
+            modelBuilder.Entity("findajob.Models.FriendRequest", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReceiverId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SenderId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderId", "ReceiverId", "Status");
+
+                    b.ToTable("FriendRequests");
+                });
+
+            modelBuilder.Entity("findajob.Models.Friendship", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FriendId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "FriendId")
+                        .IsUnique();
+
+                    b.ToTable("Friendships");
                 });
 
             modelBuilder.Entity("findajob.Models.JobApplication", b =>
@@ -313,6 +462,10 @@ namespace findajob.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("JobId");
+
+                    b.HasIndex("UserId");
+
                     b.ToTable("JobApplications");
                 });
 
@@ -327,6 +480,10 @@ namespace findajob.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Company")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompanyDescription")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -346,6 +503,10 @@ namespace findajob.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("JobType")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Location")
                         .IsRequired()
@@ -384,6 +545,8 @@ namespace findajob.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("OwnerId");
+
                     b.HasIndex("Title");
 
                     b.ToTable("JobPostings");
@@ -402,6 +565,8 @@ namespace findajob.Migrations
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("TagId");
 
                     b.HasIndex("JobPostingId", "TagId")
                         .IsUnique();
@@ -484,6 +649,84 @@ namespace findajob.Migrations
                     b.ToTable("Notifications");
                 });
 
+            modelBuilder.Entity("findajob.Models.PendingRegistration", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressLine1")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AddressLine2")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("City")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CompanyName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Country")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PhoneNumber")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PostalCode")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProfessionalTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Email")
+                        .IsUnique();
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.ToTable("PendingRegistrations");
+                });
+
             modelBuilder.Entity("findajob.Models.SavedJob", b =>
                 {
                     b.Property<int>("Id")
@@ -506,6 +749,25 @@ namespace findajob.Migrations
                         .IsUnique();
 
                     b.ToTable("SavedJobs");
+                });
+
+            modelBuilder.Entity("findajob.Models.Skill", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Skills");
                 });
 
             modelBuilder.Entity("findajob.Models.Tag", b =>
@@ -544,6 +806,14 @@ namespace findajob.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("BannerFileName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Benefits")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Bio")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -556,6 +826,10 @@ namespace findajob.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("CompanySize")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Country")
                         .IsRequired()
                         .HasColumnType("TEXT");
@@ -564,6 +838,10 @@ namespace findajob.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Industry")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -580,6 +858,10 @@ namespace findajob.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ProfessionalTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TechStack")
                         .IsRequired()
                         .HasColumnType("TEXT");
 
@@ -647,6 +929,110 @@ namespace findajob.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.CvDocument", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.FriendRequest", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.Friendship", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.JobApplication", b =>
+                {
+                    b.HasOne("findajob.Models.JobPosting", "Job")
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Job");
+                });
+
+            modelBuilder.Entity("findajob.Models.JobPosting", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.JobPostingTag", b =>
+                {
+                    b.HasOne("findajob.Models.JobPosting", "JobPosting")
+                        .WithMany("JobPostingTags")
+                        .HasForeignKey("JobPostingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("findajob.Models.Tag", "Tag")
+                        .WithMany()
+                        .HasForeignKey("TagId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("JobPosting");
+
+                    b.Navigation("Tag");
+                });
+
+            modelBuilder.Entity("findajob.Models.Notification", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.SavedJob", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.UserProfile", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithOne()
+                        .HasForeignKey("findajob.Models.UserProfile", "UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.JobPosting", b =>
+                {
+                    b.Navigation("JobPostingTags");
                 });
 #pragma warning restore 612, 618
         }

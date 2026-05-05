@@ -33,6 +33,11 @@ public class AdminController : ControllerBase
         public string Status { get; set; } = "Pending";
     }
 
+    public class SetJobVisibilityRequest
+    {
+        public bool IsDeleted { get; set; }
+    }
+
     public AdminController(
         ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
@@ -292,5 +297,94 @@ public class AdminController : ControllerBase
         }
 
         return Ok(new { message = "User deleted." });
+    }
+
+    public class UpdateUserRequest
+    {
+        public string FirstName { get; set; } = string.Empty;
+        public string LastName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+    }
+
+    [HttpPut("users/{id}")]
+    public async Task<IActionResult> UpdateUser(string id, [FromBody] UpdateUserRequest request)
+    {
+        var user = await _userManager.FindByIdAsync(id);
+        if (user == null)
+            return NotFound(new { message = "User not found." });
+
+        user.FirstName = request.FirstName;
+        user.LastName = request.LastName;
+        user.Email = request.Email;
+        user.UserName = request.Email;
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+        {
+            return BadRequest(
+                new
+                {
+                    message = "Failed to update user.",
+                    errors = result.Errors.Select(e => e.Description),
+                }
+            );
+        }
+
+        return Ok(new { message = "User updated." });
+    }
+
+    [HttpDelete("jobs/{id:int}")]
+    public async Task<IActionResult> DeleteJob(int id)
+    {
+        var job = await _context.JobPostings.IgnoreQueryFilters().FirstOrDefaultAsync(j => j.Id == id);
+        if (job == null) return NotFound();
+
+        _context.JobPostings.Remove(job);
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Job deleted permanently." });
+    }
+
+    [HttpPut("jobs/{id:int}/visibility")]
+    public async Task<IActionResult> SetJobVisibility(
+        int id,
+        [FromBody] SetJobVisibilityRequest request
+    )
+    {
+        var job = await _context
+            .JobPostings.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(j => j.Id == id);
+
+        if (job == null)
+            return NotFound(new { message = "Job not found." });
+
+        job.IsDeleted = request.IsDeleted;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = request.IsDeleted ? "Job archived." : "Job restored." });
+    }
+
+    [HttpGet("registrations")]
+    public async Task<IActionResult> GetPendingRegistrations()
+    {
+        var list = await _context.PendingRegistrations
+            .OrderByDescending(p => p.CreatedAt)
+            .ToListAsync();
+        return Ok(list);
+    }
+
+    [HttpDelete("registrations/{id}")]
+    public async Task<IActionResult> DeleteRegistration([FromRoute] string id)
+    {
+        Console.WriteLine($"[Admin] Deleting registration: {id}");
+        var reg = await _context.PendingRegistrations.FirstOrDefaultAsync(p => p.Id == id);
+        if (reg == null) 
+        {
+            Console.WriteLine($"[Admin] Registration not found: {id}");
+            return NotFound();
+        }
+        _context.PendingRegistrations.Remove(reg);
+        await _context.SaveChangesAsync();
+        return Ok(new { message = "Registration request deleted." });
     }
 }

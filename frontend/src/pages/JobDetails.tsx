@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams, Link as RouterLink } from 'react-router-dom'
 import { api } from '../api'
 import { useAuth } from '../auth'
+import { formatSalary } from '../utils'
 import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -13,14 +14,18 @@ import Paper from '@mui/material/Paper'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
+import BoltIcon from '@mui/icons-material/Bolt'
 
 type JobPosting = {
   id: number
   title: string
   company: string
+  companyDescription?: string
   description: string
   location: string
   salary: string
+  jobType: string
+  tags: string[]
 }
 
 export default function JobDetails() {
@@ -46,7 +51,8 @@ export default function JobDetails() {
     if (!job) return []
     const items: { label: string; value: string }[] = []
     if (job.location) items.push({ label: 'Location', value: job.location })
-    if (job.salary) items.push({ label: 'Salary', value: job.salary })
+    if (job.salary) items.push({ label: 'Salary', value: formatSalary(job.salary) })
+    if (job.jobType) items.push({ label: 'Job Type', value: job.jobType })
     return items
   }, [job])
 
@@ -131,7 +137,7 @@ export default function JobDetails() {
     <Box>
       <Grid container spacing={2.5}>
         {/* LEFT: Main content */}
-        <Grid item xs={12} md={8}>
+        <Grid size={{ xs: 12, md: 8 }}>
           <Paper sx={{ p: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
             <Typography variant="h4" sx={{ fontWeight: 900, color: 'primary.main' }}>
               {job.title}
@@ -140,16 +146,23 @@ export default function JobDetails() {
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1, flexWrap: 'wrap' }}>
               <Typography sx={{ opacity: 0.9, fontWeight: 700 }}>{job.company}</Typography>
               {job.location ? <Chip size="small" label={job.location} variant="outlined" /> : null}
-              {job.salary ? <Chip size="small" label={job.salary} variant="outlined" /> : null}
+              {job.jobType ? <Chip size="small" label={job.jobType} variant="outlined" color="primary" /> : null}
+              {job.salary ? <Chip size="small" label={formatSalary(job.salary)} variant="outlined" /> : null}
+            </Stack>
+
+            <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+              {(job.tags || []).map(tag => (
+                <Chip key={tag} label={tag} size="small" sx={{ fontWeight: 800 }} />
+              ))}
             </Stack>
 
             <Divider sx={{ my: 2, borderColor: 'rgba(255,255,255,0.08)' }} />
 
-            <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>
-              About the role
+            <Typography variant="h6" sx={{ fontWeight: 900, mb: 1, display: 'flex', alignItems: 'center' }}>
+              <BoltIcon sx={{ mr: 1, color: 'primary.main' }} /> About the role
             </Typography>
 
-            <Typography sx={{ opacity: 0.9, whiteSpace: 'pre-wrap' }}>
+            <Typography sx={{ opacity: 0.9, whiteSpace: 'pre-wrap', lineHeight: 1.8 }}>
               {job.description}
             </Typography>
 
@@ -168,7 +181,7 @@ export default function JobDetails() {
         </Grid>
 
         {/* RIGHT: Sticky sidebar */}
-        <Grid item xs={12} md={4}>
+        <Grid size={{ xs: 12, md: 4 }}>
           <Box sx={{ position: { md: 'sticky' }, top: { md: 88 } }}>
             <Paper sx={{ p: 2.5, border: '1px solid rgba(255,255,255,0.08)' }}>
               <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>
@@ -197,11 +210,12 @@ export default function JobDetails() {
                     disabled={!isEmployee}
                     onClick={() => nav(`/apply/${job.id}`)}
                     fullWidth
+                    sx={{ fontWeight: 900, py: 1.2 }}
                   >
-                    Apply
+                    Apply Now
                   </Button>
                 ) : (
-                  <Button variant="contained" component={RouterLink} to="/login" fullWidth>
+                  <Button variant="contained" component={RouterLink} to="/login" fullWidth sx={{ fontWeight: 900 }}>
                     Login to apply
                   </Button>
                 )}
@@ -211,6 +225,7 @@ export default function JobDetails() {
                     variant={saved ? 'outlined' : 'text'}
                     onClick={() => void toggleSave()}
                     fullWidth
+                    sx={{ fontWeight: 800 }}
                   >
                   {saved ? 'Saved' : 'Save job'}
                   </Button>
@@ -232,12 +247,9 @@ export default function JobDetails() {
                 background: 'rgba(255,255,255,0.03)'
               }}
             >
-              <Typography sx={{ fontWeight: 900, mb: 0.5 }}>Company</Typography>
+              <Typography sx={{ fontWeight: 900, mb: 0.5 }}>About {job.company}</Typography>
               <Typography sx={{ opacity: 0.85 }}>
-                {job.company}
-              </Typography>
-              <Typography sx={{ opacity: 0.7, mt: 1 }}>
-                Company pages, benefits, tech stack, and more coming soon.
+                {job.companyDescription || 'No company description available.'}
               </Typography>
             </Paper>
           </Box>
@@ -254,6 +266,7 @@ export default function JobDetails() {
           severity={snack.type}
           variant="filled"
           onClose={() => setSnack((s) => ({ ...s, open: false }))}
+          sx={{ fontWeight: 700 }}
         >
           {snack.text}
         </Alert>

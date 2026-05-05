@@ -2,82 +2,80 @@ import { useEffect, useState } from 'react'
 import { api } from '../api'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 
-type MyApp = {
-  id: number
-  jobId: number
-  jobTitle: string
-  companyName: string
-  message: string
-  appliedAt: string
-  status?: string | null
-}
+import EmployeeApplications from './employee/EmployeeApplications'
+import EmployeeSavedJobs from './employee/EmployeeSavedJobs'
+import EmployeeProfile from './employee/EmployeeProfile'
+import FriendsList from './employee/FriendsList'
 
 export default function Employee() {
-  const [apps, setApps] = useState<MyApp[]>([])
+  const [tab, setTab] = useState(0)
+  const [applications, setApplications] = useState<any[]>([])
+  const [savedJobs, setSavedJobs] = useState<any[]>([])
+  const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
   const load = async () => {
     setLoading(true)
-    const res = await api.get('/applications/mine')
-    setApps(res.data)
-    setLoading(false)
+    try {
+      const [appsRes, savedRes, profileRes] = await Promise.allSettled([
+        api.get('/application/mine'),
+        api.get('/savedjobs/mine'),
+        api.get('/profiles/me'),
+      ])
+
+      if (appsRes.status === 'fulfilled') setApplications(appsRes.value.data ?? [])
+      if (savedRes.status === 'fulfilled') setSavedJobs(savedRes.value.data ?? [])
+      if (profileRes.status === 'fulfilled') setProfile(profileRes.value.data ?? null)
+    } catch (e) {
+      console.error('Failed to load employee data:', e)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  useEffect(() => { void load() }, [])
+  useEffect(() => {
+    void load()
+  }, [])
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 900, mb: 2 }}>
-        Employee Dashboard
-      </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
+        <Box>
+          <Typography variant="h3" sx={{ fontWeight: 900 }}>
+            Employee Dashboard
+          </Typography>
+          <Typography sx={{ opacity: 0.6 }}>Track your career journey and profile</Typography>
+        </Box>
 
-      <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Job</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applied</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Status</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Details</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {loading ? (
-              <TableRow><TableCell colSpan={5}>Loading…</TableCell></TableRow>
-            ) : apps.length === 0 ? (
-              <TableRow><TableCell colSpan={5}>No applications yet.</TableCell></TableRow>
-            ) : (
-              apps.map(a => (
-                <TableRow key={a.id} hover>
-                  <TableCell sx={{ fontWeight: 900 }}>{a.jobTitle}</TableCell>
-                  <TableCell>{a.companyName}</TableCell>
-                  <TableCell>{new Date(a.appliedAt).toLocaleDateString()}</TableCell>
-                  <TableCell>{a.status ?? 'Pending'}</TableCell>
-                  <TableCell>
-                    <Button size="small" variant="outlined" onClick={() => alert(a.message || '(no message)')}>
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </Paper>
-
-      <Stack direction="row" justifyContent="flex-end" sx={{ mt: 2 }}>
-        <Button variant="outlined" onClick={() => void load()}>Refresh</Button>
+        <Button variant="outlined" onClick={() => void load()}>
+          Refresh Data
+        </Button>
       </Stack>
+
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
+        <Tab label={`Applications (${applications.length})`} sx={{ fontWeight: 700 }} />
+        <Tab label={`Saved Jobs (${savedJobs.length})`} sx={{ fontWeight: 700 }} />
+        <Tab label="Friends" sx={{ fontWeight: 700 }} />
+        <Tab label="Requests" sx={{ fontWeight: 700 }} />
+        <Tab label="My Profile" sx={{ fontWeight: 700 }} />
+      </Tabs>
+
+      {loading && applications.length === 0 && savedJobs.length === 0 && !profile ? (
+        <Typography sx={{ py: 8, textAlign: 'center', opacity: 0.5 }}>Syncing your dashboard...</Typography>
+      ) : (
+        <>
+          {tab === 0 && <EmployeeApplications applications={applications} onRefresh={load} />}
+          {tab === 1 && <EmployeeSavedJobs savedJobs={savedJobs} onRefresh={load} />}
+          {tab === 2 && <FriendsList mode="friends" />}
+          {tab === 3 && <FriendsList mode="requests" />}
+          {tab === 4 && <EmployeeProfile profile={profile} onRefresh={load} />}
+        </>
+      )}
     </Box>
   )
 }

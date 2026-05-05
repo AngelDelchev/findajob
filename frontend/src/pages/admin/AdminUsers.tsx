@@ -16,6 +16,7 @@ import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
 type AdminUser = {
@@ -36,6 +37,8 @@ export default function AdminUsers({ onChanged }: { onChanged?: () => void | Pro
   const [open, setOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
   const [selectedRoles, setSelectedRoles] = useState<string[]>([])
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '' })
+  const [isSaving, setIsSaving] = useState(false)
 
   const load = async () => {
     const res = await api.get('/admin/users')
@@ -46,9 +49,14 @@ export default function AdminUsers({ onChanged }: { onChanged?: () => void | Pro
     void load()
   }, [])
 
-  const openRoles = (u: AdminUser) => {
+  const openEdit = (u: AdminUser) => {
     setSelectedUser(u)
     setSelectedRoles(u.roles ?? [])
+    setEditForm({
+      firstName: u.firstName || '',
+      lastName: u.lastName || '',
+      email: u.email || ''
+    })
     setOpen(true)
   }
 
@@ -56,12 +64,29 @@ export default function AdminUsers({ onChanged }: { onChanged?: () => void | Pro
     setSelectedRoles(prev => (prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]))
   }
 
-  const saveRoles = async () => {
+  const saveUser = async () => {
     if (!selectedUser) return
-    await api.put(`/admin/users/${selectedUser.id}/roles`, { roles: selectedRoles })
-    setOpen(false)
-    await load()
-    await Promise.resolve(onChanged?.())
+    setIsSaving(true)
+    try {
+      // Save roles
+      await api.put(`/admin/users/${selectedUser.id}/roles`, { roles: selectedRoles })
+      
+      // Save basic info - Assuming an endpoint exists or we use profiles/update-like logic
+      // For now, let's at least ensure roles are saved and we try to save names if supported
+      await api.put(`/admin/users/${selectedUser.id}`, {
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        email: editForm.email
+      })
+
+      setOpen(false)
+      await load()
+      await Promise.resolve(onChanged?.())
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'Save failed.')
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const toggleDisable = async (u: AdminUser) => {
@@ -73,9 +98,13 @@ export default function AdminUsers({ onChanged }: { onChanged?: () => void | Pro
   const deleteUser = async (id: string) => {
     const ok = window.confirm('Delete this user permanently? This cannot be undone.')
     if (!ok) return
-    await api.delete(`/admin/users/${id}`)
-    await load()
-    await Promise.resolve(onChanged?.())
+    try {
+      await api.delete(`/admin/users/${id}`)
+      await load()
+      await Promise.resolve(onChanged?.())
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'Delete failed.')
+    }
   }
 
   return (
@@ -112,7 +141,7 @@ export default function AdminUsers({ onChanged }: { onChanged?: () => void | Pro
                 <TableCell>
                   <Stack direction="row" spacing={1}>
                     <Button size="small" variant="outlined" color="error" onClick={() => void deleteUser(u.id)}>Delete</Button>
-                    <Button size="small" variant="outlined" onClick={() => openRoles(u)}>Edit roles</Button>
+                    <Button size="small" variant="outlined" onClick={() => openEdit(u)}>Edit</Button>
                     <Button
                       size="small"
                       variant="outlined"
@@ -134,22 +163,46 @@ export default function AdminUsers({ onChanged }: { onChanged?: () => void | Pro
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>
-          Edit roles {selectedUser ? `— ${selectedUser.email}` : ''}
+          Edit User {selectedUser ? `— ${selectedUser.email}` : ''}
         </DialogTitle>
         <DialogContent>
-          <Stack sx={{ mt: 1 }}>
-            {ALL_ROLES.map(r => (
-              <FormControlLabel
-                key={r}
-                control={<Checkbox checked={selectedRoles.includes(r)} onChange={() => toggleRole(r)} />}
-                label={r}
-              />
-            ))}
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="First Name"
+              value={editForm.firstName}
+              onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Last Name"
+              value={editForm.lastName}
+              onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Email"
+              value={editForm.email}
+              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              fullWidth
+            />
+
+            <Typography sx={{ fontWeight: 800, mt: 1 }}>Roles</Typography>
+            <Box>
+              {ALL_ROLES.map(r => (
+                <FormControlLabel
+                  key={r}
+                  control={<Checkbox checked={selectedRoles.includes(r)} onChange={() => toggleRole(r)} />}
+                  label={r}
+                />
+              ))}
+            </Box>
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={() => void saveRoles()}>Save</Button>
+          <Button variant="contained" disabled={isSaving} onClick={() => void saveUser()}>
+            {isSaving ? 'Saving...' : 'Save'}
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

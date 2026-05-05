@@ -1,126 +1,130 @@
 import { useEffect, useState } from 'react'
 import { api } from '../api'
-import { Link as RouterLink } from 'react-router-dom'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
-import Paper from '@mui/material/Paper'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogTitle from '@mui/material/DialogTitle'
 import Stack from '@mui/material/Stack'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
+import Tab from '@mui/material/Tab'
+import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
-import MenuItem from '@mui/material/MenuItem'
-import Select from '@mui/material/Select'
 
-type AppItem = {
-  id: number
-  jobId: number
-  jobTitle: string
-  companyName: string
-  applicantName: string
-  applicantEmail: string
-  message: string
-  appliedAt: string
-  status?: string | null
-}
-
-const STATUSES = ['Pending', 'Reviewed', 'Accepted', 'Rejected'] as const
+import EmployerApplications from './employer/EmployerApplications'
+import EmployerJobsList from './employer/EmployerJobsList'
+import EmployerProfile from './employer/EmployerProfile'
+import FriendsList from './employee/FriendsList'
+import JobFormFields from '../components/JobFormFields'
+import type { JobFormState } from '../components/JobFormFields'
 
 export default function Employer() {
-  const [apps, setApps] = useState<AppItem[]>([])
-  const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState(0)
+  const [applications, setApplications] = useState<any[]>([])
+  const [jobs, setJobs] = useState<any[]>([])
+  const [profile, setProfile] = useState<any>(null)
+  const [openCreate, setOpenCreate] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const [jobForm, setJobForm] = useState<JobFormState>({
+    title: '',
+    company: '',
+    location: '',
+    salary: '$ 0',
+    jobType: 'Full-time',
+    description: '',
+    tags: [],
+  })
 
   const load = async () => {
-    setLoading(true)
-    const res = await api.get('/applications/employer')
-    setApps(res.data)
-    setLoading(false)
+    try {
+      const [appsRes, jobsRes, profileRes] = await Promise.all([
+        api.get('/application/employer'),
+        api.get('/jobs/mine'),
+        api.get('/profiles/me')
+      ])
+
+      setApplications(appsRes.data ?? [])
+      setJobs(jobsRes.data ?? [])
+      setProfile(profileRes.data ?? null)
+    } catch (e) {
+      console.error('Failed to load employer data:', e)
+    }
   }
 
   useEffect(() => {
     void load()
   }, [])
 
-  const setStatus = async (id: number, status: string) => {
-    await api.put(`/applications/${id}/status`, { status })
-    await load()
+  const createJob = async () => {
+    if (!jobForm.title) return
+    setIsSaving(true)
+    try {
+      await api.post('/jobs', jobForm)
+      setOpenCreate(false)
+      setJobForm({
+        title: '',
+        company: '',
+        location: '',
+        salary: '$ 0',
+        jobType: 'Full-time',
+        description: '',
+        tags: [],
+      })
+      await load()
+    } catch (e) {
+      console.error('Create job failed:', e)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-        <Typography variant="h4" sx={{ fontWeight: 900 }}>
-          Employer Dashboard
-        </Typography>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
+        <Box>
+          <Typography variant="h3" sx={{ fontWeight: 900 }}>
+            Employer Terminal
+          </Typography>
+          <Typography sx={{ opacity: 0.6 }}>Manage your postings and track applications</Typography>
+        </Box>
 
-        <Stack direction="row" spacing={1}>
-          <Button component={RouterLink} to="/employer/jobs" variant="contained">
-            My Jobs
-          </Button>
+        <Stack direction="row" spacing={1.5}>
           <Button variant="outlined" onClick={() => void load()}>
             Refresh
+          </Button>
+          <Button variant="contained" size="large" onClick={() => setOpenCreate(true)} sx={{ fontWeight: 900 }}>
+            Post a Job
           </Button>
         </Stack>
       </Stack>
 
-      <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Job</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applicant</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applied</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Status</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Message</TableCell>
-            </TableRow>
-          </TableHead>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
+        <Tab label={`Applications (${applications.length})`} sx={{ fontWeight: 700 }} />
+        <Tab label={`My Jobs (${jobs.length})`} sx={{ fontWeight: 700 }} />
+        <Tab label="Friends" sx={{ fontWeight: 700 }} />
+        <Tab label="Requests" sx={{ fontWeight: 700 }} />
+        <Tab label="Company Profile" sx={{ fontWeight: 700 }} />
+      </Tabs>
 
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5}>Loading…</TableCell>
-              </TableRow>
-            ) : apps.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5}>No applications yet.</TableCell>
-              </TableRow>
-            ) : (
-              apps.map((a) => (
-                <TableRow key={a.id} hover>
-                  <TableCell sx={{ fontWeight: 900 }}>{a.jobTitle}</TableCell>
-                  <TableCell>{a.applicantEmail}</TableCell>
-                  <TableCell>{new Date(a.appliedAt).toLocaleDateString()}</TableCell>
-                  <TableCell>
-                    <Select
-                      size="small"
-                      value={(a.status ?? 'Pending') as any}
-                      onChange={(e) => void setStatus(a.id, String(e.target.value))}
-                      sx={{ minWidth: 160 }}
-                    >
-                      {STATUSES.map((s) => (
-                        <MenuItem key={s} value={s}>
-                          {s}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      onClick={() => window.alert(a.message || '(no message)')}
-                    >
-                      View
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </Paper>
+      {tab === 0 && <EmployerApplications applications={applications} onRefresh={load} />}
+      {tab === 1 && <EmployerJobsList jobs={jobs} onRefresh={load} />}
+      {tab === 2 && <FriendsList mode="friends" />}
+      {tab === 3 && <FriendsList mode="requests" />}
+      {tab === 4 && <EmployerProfile profile={profile} onRefresh={load} />}
+
+      <Dialog open={openCreate} onClose={() => setOpenCreate(false)} fullWidth maxWidth="md">
+        <DialogTitle sx={{ fontWeight: 900 }}>Post New Job</DialogTitle>
+        <DialogContent dividers>
+          <JobFormFields form={jobForm} setForm={setJobForm} />
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
+          <Button variant="contained" disabled={isSaving} onClick={() => void createJob()} sx={{ px: 4, fontWeight: 900 }}>
+            {isSaving ? 'Posting...' : 'Post Job'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

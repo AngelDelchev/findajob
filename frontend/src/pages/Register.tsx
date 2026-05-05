@@ -1,158 +1,230 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useMemo, useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import { api } from '../api'
-import Paper from '@mui/material/Paper'
-import Typography from '@mui/material/Typography'
-import Grid from '@mui/material/Grid'
-import TextField from '@mui/material/TextField'
-import Button from '@mui/material/Button'
-import Stack from '@mui/material/Stack'
 import Alert from '@mui/material/Alert'
+import Autocomplete from '@mui/material/Autocomplete'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Fade from '@mui/material/Fade'
+import Paper from '@mui/material/Paper'
+import Popper from '@mui/material/Popper'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
+
+const COUNTRIES = [
+  'Bulgaria', 'United States', 'United Kingdom', 'Germany', 'France', 'Canada', 'Australia', 'Japan'
+]
+
+const CITIES: Record<string, string[]> = {
+  'Bulgaria': ['Sofia', 'Plovdiv', 'Varna', 'Burgas'],
+  'United States': ['New York', 'Los Angeles', 'Chicago', 'Houston'],
+  'United Kingdom': ['London', 'Manchester', 'Birmingham', 'Glasgow'],
+}
 
 export default function Register() {
-  const nav = useNavigate()
+  const [form, setForm] = useState({
+    email: '',
+    phoneNumber: '',
+    firstName: '',
+    lastName: '',
+    password: '',
+    confirmPassword: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    postalCode: '',
+    country: 'Bulgaria',
+  })
+
+  const [showRules, setShowRules] = useState(false)
+  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [isSuccess, setIsSuccess] = useState(false)
 
-  const [email, setEmail] = useState('')
-  const [phoneNumber, setPhoneNumber] = useState('')
-  const [firstName, setFirstName] = useState('')
-  const [lastName, setLastName] = useState('')
+  const passwordChecks = useMemo(
+    () => [
+      { label: 'At least 8 characters', ok: form.password.length >= 8 },
+      { label: 'One uppercase letter', ok: /[A-Z]/.test(form.password) },
+      { label: 'One lowercase letter', ok: /[a-z]/.test(form.password) },
+      { label: 'One number', ok: /\d/.test(form.password) },
+      { label: 'One special character', ok: /[^A-Za-z0-9]/.test(form.password) },
+      { label: 'Passwords match', ok: form.password.length > 0 && form.password === form.confirmPassword },
+    ],
+    [form.password, form.confirmPassword]
+  )
 
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
+  const set = (key: string, value: string) => {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
 
-  const [addressLine1, setAddressLine1] = useState('')
-  const [addressLine2, setAddressLine2] = useState('')
-  const [city, setCity] = useState('')
-  const [postalCode, setPostalCode] = useState('')
-  const [country, setCountry] = useState('Bulgaria')
+  const handleFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+    setAnchorEl(event.currentTarget)
+    setShowRules(true)
+  }
 
-  const [avatar, setAvatar] = useState<File | null>(null)
-  const [cv, setCv] = useState<File | null>(null)
+  const handleBlur = () => {
+    setShowRules(false)
+  }
 
-  const submit = async () => {
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setSaving(true)
     setError('')
-    if (!email.trim()) return setError('Email is required.')
-    if (!password) return setError('Password is required.')
-    if (password !== confirmPassword) return setError('Passwords do not match.')
 
-    setLoading(true)
     try {
       await api.post('/auth/register', {
-        email,
-        password,
-        confirmPassword,
-        firstName,
-        lastName,
-        phoneNumber,
-        addressLine1,
-        addressLine2,
-        city,
-        postalCode,
-        country,
-        role: 'Employee'
+        email: form.email,
+        password: form.password,
+        confirmPassword: form.confirmPassword,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        phoneNumber: form.phoneNumber,
+        addressLine1: form.addressLine1,
+        addressLine2: form.addressLine2,
+        city: form.city,
+        postalCode: form.postalCode,
+        country: form.country,
+        role: 'Employee',
       })
 
-      if (avatar) {
-        const fd = new FormData()
-        fd.append('file', avatar)
-        await api.post('/profiles/me/avatar', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-      }
-
-      if (cv) {
-        const fd = new FormData()
-        fd.append('file', cv)
-        fd.append('isPrimary', 'true')
-        await api.post('/cv/upload', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-      }
-
-      nav('/employee')
+      setIsSuccess(true)
     } catch (e: any) {
-      setError(e?.response?.data?.message || 'Registration failed.')
+      const apiMessage = e?.response?.data?.message
+      const apiErrors = e?.response?.data?.errors
+      setError(Array.isArray(apiErrors) ? apiErrors.join(' ') : apiMessage ?? 'Registration failed.')
     } finally {
-      setLoading(false)
+      setSaving(false)
     }
   }
 
+  if (isSuccess) {
+    return (
+      <Paper sx={{ maxWidth: 600, mx: 'auto', p: 6, textAlign: 'center', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <Typography variant="h4" sx={{ fontWeight: 900, mb: 2, color: 'primary.main' }}>
+          Almost there!
+        </Typography>
+        <Typography sx={{ mb: 4, opacity: 0.8 }}>
+          We've sent a confirmation email to <b>{form.email}</b>. 
+          Please click the link in the email to activate your account.
+        </Typography>
+        <Button variant="outlined" component={RouterLink} to="/login">
+          Back to login
+        </Button>
+      </Paper>
+    )
+  }
+
   return (
-    <Paper sx={{ p: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
-      <Typography variant="h4" sx={{ fontWeight: 900, mb: 2 }}>
+    <Paper sx={{ maxWidth: 900, mx: 'auto', p: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
+      <Typography variant="h3" sx={{ fontWeight: 900 }}>
         Create account
       </Typography>
 
-      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+      <Typography sx={{ mt: 1, opacity: 0.8 }}>
+        Employee registration — you’ll be able to upload a CV and set a profile picture right after.
+      </Typography>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6}>
-          <TextField label="Email" value={email} onChange={e => setEmail(e.target.value)} fullWidth />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField label="Phone number" value={phoneNumber} onChange={e => setPhoneNumber(e.target.value)} fullWidth />
-        </Grid>
+      <Box component="form" onSubmit={submit} sx={{ mt: 3 }}>
+        <Stack spacing={2}>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <TextField fullWidth label="Email" value={form.email} onChange={(e) => set('email', e.target.value)} />
+            <TextField fullWidth label="Phone number" value={form.phoneNumber} onChange={(e) => set('phoneNumber', e.target.value)} />
+            <TextField fullWidth label="First name" value={form.firstName} onChange={(e) => set('firstName', e.target.value)} />
+          </Stack>
 
-        <Grid item xs={12} sm={6}>
-          <TextField label="First name" value={firstName} onChange={e => setFirstName(e.target.value)} fullWidth />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField label="Last name" value={lastName} onChange={e => setLastName(e.target.value)} fullWidth />
-        </Grid>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <TextField fullWidth label="Last name" value={form.lastName} onChange={(e) => set('lastName', e.target.value)} />
+            <TextField
+              fullWidth
+              type={showPassword ? 'text' : 'password'}
+              label="Password"
+              value={form.password}
+              onChange={(e) => set('password', e.target.value)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+            />
+            <TextField
+              fullWidth
+              type={showPassword ? 'text' : 'password'}
+              label="Confirm password"
+              value={form.confirmPassword}
+              onChange={(e) => set('confirmPassword', e.target.value)}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+            />
+          </Stack>
 
-        <Grid item xs={12} sm={6}>
-          <TextField label="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} fullWidth />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField label="Confirm password" type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} fullWidth />
-        </Grid>
+          <Stack direction="row" spacing={1}>
+            <Button variant="outlined" onClick={() => setShowPassword((v) => !v)}>
+              {showPassword ? 'Hide password' : 'Show password'}
+            </Button>
+          </Stack>
 
-        <Grid item xs={12}>
-          <TextField label="Home address" value={addressLine1} onChange={e => setAddressLine1(e.target.value)} fullWidth />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField label="Address line 2 (optional)" value={addressLine2} onChange={e => setAddressLine2(e.target.value)} fullWidth />
-        </Grid>
+          <Popper open={showRules} anchorEl={anchorEl} placement="top-start" transition sx={{ zIndex: 1300 }}>
+            {({ TransitionProps }) => (
+              <Fade {...TransitionProps} timeout={350}>
+                <Paper sx={{ p: 2, mb: 1, border: '1px solid rgba(255,255,255,0.12)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', backgroundColor: 'background.paper' }}>
+                  <Stack spacing={0.5}>
+                    {passwordChecks.map((item) => (
+                      <Typography key={item.label} sx={{ color: item.ok ? 'primary.main' : 'text.secondary', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                        <Box component="span" sx={{ mr: 1, fontSize: '1rem' }}>{item.ok ? '✓' : '•'}</Box> {item.label}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Paper>
+              </Fade>
+            )}
+          </Popper>
 
-        <Grid item xs={12} sm={4}>
-          <TextField label="City" value={city} onChange={e => setCity(e.target.value)} fullWidth />
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <TextField label="ZIP / Postal code" value={postalCode} onChange={e => setPostalCode(e.target.value)} fullWidth />
-        </Grid>
-        <Grid item xs={12} sm={4}>
-          <TextField label="Country" value={country} onChange={e => setCountry(e.target.value)} fullWidth />
-        </Grid>
+          <Typography sx={{ fontWeight: 800, mt: 1 }}>Address</Typography>
 
-        <Grid item xs={12} sm={6}>
-          <Button variant="outlined" component="label" fullWidth>
-            Upload profile picture
-            <input hidden type="file" accept="image/*" onChange={(e) => setAvatar(e.target.files?.[0] ?? null)} />
-          </Button>
-          <Typography sx={{ opacity: 0.7, mt: 0.5 }}>
-            {avatar ? avatar.name : 'No file selected'}
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <TextField fullWidth label="Home address" value={form.addressLine1} onChange={(e) => set('addressLine1', e.target.value)} />
+            <TextField fullWidth label="Address line 2 (optional)" value={form.addressLine2} onChange={(e) => set('addressLine2', e.target.value)} />
+          </Stack>
+
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+            <Autocomplete
+              fullWidth
+              freeSolo
+              options={COUNTRIES}
+              value={form.country}
+              onInputChange={(_, val) => set('country', val)}
+              renderInput={(params) => <TextField {...params} label="Country" />}
+            />
+            <Autocomplete
+              fullWidth
+              freeSolo
+              options={CITIES[form.country] || []}
+              value={form.city}
+              onInputChange={(_, val) => set('city', val)}
+              renderInput={(params) => <TextField {...params} label="City" />}
+            />
+            <TextField fullWidth label="ZIP / Postal code" value={form.postalCode} onChange={(e) => set('postalCode', e.target.value)} />
+          </Stack>
+
+          {error ? <Alert severity="error">{error}</Alert> : null}
+
+          <Stack direction="row" spacing={1.5}>
+            <Button variant="outlined" component={RouterLink} to="/login">
+              Back to login
+            </Button>
+            <Button type="submit" variant="contained" disabled={saving}>
+              Create account
+            </Button>
+          </Stack>
+
+          <Typography sx={{ opacity: 0.85 }}>
+            Are you an employer?{' '}
+            <Typography component={RouterLink} to="/register/employer" sx={{ color: 'primary.main', textDecoration: 'none' }}>
+              Sign up over here
+            </Typography>
           </Typography>
-        </Grid>
-
-        <Grid item xs={12} sm={6}>
-          <Button variant="outlined" component="label" fullWidth>
-            Upload CV (PDF/DOC/DOCX)
-            <input hidden type="file" accept=".pdf,.doc,.docx" onChange={(e) => setCv(e.target.files?.[0] ?? null)} />
-          </Button>
-          <Typography sx={{ opacity: 0.7, mt: 0.5 }}>
-            {cv ? cv.name : 'No file selected'}
-          </Typography>
-        </Grid>
-      </Grid>
-
-      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
-        <Button variant="outlined" onClick={() => nav(-1)}>Back</Button>
-        <Button variant="contained" disabled={loading} onClick={() => void submit()}>
-          {loading ? 'Creating…' : 'Create account'}
-        </Button>
-      </Stack>
+        </Stack>
+      </Box>
     </Paper>
   )
 }

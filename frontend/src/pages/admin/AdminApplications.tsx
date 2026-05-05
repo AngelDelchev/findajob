@@ -13,10 +13,12 @@ import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
+import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
 type AdminApp = {
   id: number
+  userId: string
   jobId: number
   jobTitle: string
   companyName: string
@@ -32,6 +34,11 @@ export default function AdminApplications({ onChanged }: { onChanged?: () => voi
   const [open, setOpen] = useState(false)
   const [selected, setSelected] = useState<AdminApp | null>(null)
 
+  // User Edit State
+  const [userEditOpen, setUserEditOpen] = useState(false)
+  const [userForm, setUserForm] = useState({ id: '', firstName: '', lastName: '', email: '' })
+  const [isSavingUser, setIsSavingUser] = useState(false)
+
   const load = async () => {
     const res = await api.get('/admin/applications')
     setApps(res.data)
@@ -44,10 +51,38 @@ export default function AdminApplications({ onChanged }: { onChanged?: () => voi
     setOpen(true)
   }
 
+  const openEditUser = (a: AdminApp) => {
+    const [first, ...last] = (a.applicantName || '').split(' ')
+    setUserForm({
+      id: a.userId,
+      firstName: first || '',
+      lastName: last.join(' ') || '',
+      email: a.applicantEmail || ''
+    })
+    setUserEditOpen(true)
+  }
+
+  const saveUser = async () => {
+    setIsSavingUser(true)
+    try {
+      await api.put(`/admin/users/${userForm.id}`, {
+        firstName: userForm.firstName,
+        lastName: userForm.lastName,
+        email: userForm.email
+      })
+      setUserEditOpen(false)
+      await load()
+    } catch (e: any) {
+      alert(e?.response?.data?.message || 'Failed to save user.')
+    } finally {
+      setIsSavingUser(false)
+    }
+  }
+
   const remove = async (id: number) => {
     const ok = window.confirm('Delete this application?')
     if (!ok) return
-    await api.delete(`/admin/applications/${id}`)
+    await api.delete(`/admin/application/${id}`)
     await load()
     await Promise.resolve(onChanged?.())
   }
@@ -64,7 +99,7 @@ export default function AdminApplications({ onChanged }: { onChanged?: () => voi
               <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company</TableCell>
               <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applicant</TableCell>
               <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Date</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 220 }}>Actions</TableCell>
+              <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 280 }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -76,7 +111,8 @@ export default function AdminApplications({ onChanged }: { onChanged?: () => voi
                 <TableCell>{new Date(a.appliedAt).toLocaleDateString()}</TableCell>
                 <TableCell>
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="outlined" onClick={() => view(a)}>View</Button>
+                    <Button size="small" variant="outlined" onClick={() => view(a)}>View App</Button>
+                    <Button size="small" variant="outlined" onClick={() => openEditUser(a)}>Edit User</Button>
                     <Button size="small" variant="outlined" color="error" onClick={() => void remove(a.id)}>Delete</Button>
                   </Stack>
                 </TableCell>
@@ -91,7 +127,7 @@ export default function AdminApplications({ onChanged }: { onChanged?: () => voi
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>Application details</DialogTitle>
-        <DialogContent>
+        <DialogContent dividers>
           {selected ? (
             <Box sx={{ mt: 1 }}>
               <Typography sx={{ fontWeight: 900 }}>{selected.jobTitle}</Typography>
@@ -105,6 +141,21 @@ export default function AdminApplications({ onChanged }: { onChanged?: () => voi
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={userEditOpen} onClose={() => setUserEditOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 900 }}>Edit User Details</DialogTitle>
+        <DialogContent dividers>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField label="First Name" value={userForm.firstName} onChange={(e) => setUserForm({...userForm, firstName: e.target.value})} fullWidth />
+            <TextField label="Last Name" value={userForm.lastName} onChange={(e) => setUserForm({...userForm, lastName: e.target.value})} fullWidth />
+            <TextField label="Email" value={userForm.email} onChange={(e) => setUserForm({...userForm, email: e.target.value})} fullWidth />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setUserEditOpen(false)}>Cancel</Button>
+          <Button variant="contained" disabled={isSavingUser} onClick={() => void saveUser()}>Save</Button>
         </DialogActions>
       </Dialog>
     </Box>

@@ -1,9 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth'
+import Alert from '@mui/material/Alert'
+import Box from '@mui/material/Box'
+import Button from '@mui/material/Button'
+import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
 
 export default function Login() {
-  const { login, user } = useAuth()
+  const { login, refreshUser } = useAuth()
   const navigate = useNavigate()
   const [loginName, setLoginName] = useState('')
   const [password, setPassword] = useState('')
@@ -19,48 +26,50 @@ export default function Login() {
       return
     }
 
-    if (!user) {
-      navigate('/')
-      return
-    }
+    await refreshUser()
 
-    if (user.roles.includes('Admin')) {
-      navigate('/admin')
-    } else if (user.roles.includes('Employer')) {
-      navigate('/employer')
-    } else {
-      navigate('/employee')
+    try {
+      const res = await fetch('https://localhost:7001/api/auth/me', {
+        credentials: 'include',
+      })
+      const user = await res.json()
+
+      if (user.roles?.includes('Admin')) navigate('/admin')
+      else if (user.roles?.includes('Employer')) navigate('/employer')
+      else navigate('/employee')
+    } catch {
+      navigate('/')
     }
   }
 
   return (
-    <div style={{ maxWidth: '400px', margin: '40px auto' }}>
-      <h2>Login</h2>
+    <Paper sx={{ maxWidth: 460, mx: 'auto', p: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
+      <Typography variant="h4" sx={{ fontWeight: 900 }}>
+        Login
+      </Typography>
 
-      <form onSubmit={handleSubmit}>
-        <div>
-          <input
+      <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
+        <Stack spacing={2}>
+          <TextField
             value={loginName}
             onChange={(e) => setLoginName(e.target.value)}
             placeholder="Email or username"
           />
-        </div>
 
-        <div style={{ marginTop: '10px' }}>
-          <input
+          <TextField
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Password"
           />
-        </div>
 
-        <button type="submit" style={{ marginTop: '12px' }}>
-          Login
-        </button>
-      </form>
+          {error ? <Alert severity="error">{error}</Alert> : null}
 
-      {error ? <p>{error}</p> : null}
-    </div>
+          <Button type="submit" variant="contained">
+            Login
+          </Button>
+        </Stack>
+      </Box>
+    </Paper>
   )
 }

@@ -13,5 +13,7 @@ namespace findajob.Models
         public string JobTitle { get; set; } = string.Empty;
         public string CompanyName { get; set; } = string.Empty;
         public string Status { get; set; } = "Pending";
+
+        public JobPosting? Job { get; set; }
     }
 }

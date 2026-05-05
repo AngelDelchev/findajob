@@ -6,6 +6,7 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import Grid from '@mui/material/Grid'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Tab from '@mui/material/Tab'
@@ -25,16 +26,26 @@ type JobPosting = {
   description: string
   location: string
   salary: string
+  createdAt?: string
 }
 
-const emptyJob: JobPosting = { id: 0, title: '', company: '', description: '', location: '', salary: '' }
+const emptyJob: JobPosting = {
+  id: 0,
+  title: '',
+  company: '',
+  description: '',
+  location: '',
+  salary: ''
+}
 
 export default function EmployerJobs() {
   const [tab, setTab] = useState(0)
 
   return (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 900, mb: 2 }}>My Jobs</Typography>
+      <Typography variant="h4" sx={{ fontWeight: 900, mb: 2 }}>
+        My Jobs
+      </Typography>
 
       <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)' }}>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable">
@@ -54,6 +65,7 @@ export default function EmployerJobs() {
 function MyJobsTab() {
   const [jobs, setJobs] = useState<JobPosting[]>([])
   const [loading, setLoading] = useState(true)
+
   const [open, setOpen] = useState(false)
   const [model, setModel] = useState<JobPosting>(emptyJob)
 
@@ -74,7 +86,9 @@ function MyJobsTab() {
   }
 
   const save = async () => {
-    await api.put(`/jobs/${model.id}`, { ...model })
+    await api.put(`/jobs/${model.id}`, {
+      ...model
+    })
     setOpen(false)
     await load()
   }
@@ -95,7 +109,7 @@ function MyJobsTab() {
             <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Title</TableCell>
             <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company</TableCell>
             <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Location</TableCell>
-            <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 220 }}>Actions</TableCell>
+            <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 200 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
 
@@ -113,8 +127,12 @@ function MyJobsTab() {
                 <TableCell>{j.location}</TableCell>
                 <TableCell>
                   <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="outlined" onClick={() => openEdit(j)}>Edit</Button>
-                    <Button size="small" variant="outlined" color="error" onClick={() => void remove(j.id)}>Delete</Button>
+                    <Button size="small" variant="outlined" onClick={() => openEdit(j)}>
+                      Edit
+                    </Button>
+                    <Button size="small" variant="outlined" color="error" onClick={() => void remove(j.id)}>
+                      Delete
+                    </Button>
                   </Stack>
                 </TableCell>
               </TableRow>
@@ -124,11 +142,13 @@ function MyJobsTab() {
       </Table>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900 }}>Edit job #{model.id}</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 900 }}>
+          Edit job #{model.id}
+        </DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Title" value={model.title} onChange={(e) => setModel({ ...model, title: e.target.value })} />
-            <TextField label="Company" value={model.company} onChange={(e) => setModel({ ...model, company: e.target.value })} />
+            <TextField label="Title" value={model.title} onChange={(e) => setModel({ ...model, title: e.target.value })} fullWidth />
+            <TextField label="Company" value={model.company} onChange={(e) => setModel({ ...model, company: e.target.value })} fullWidth />
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
               <TextField label="Location" value={model.location} onChange={(e) => setModel({ ...model, location: e.target.value })} fullWidth />
               <TextField label="Salary" value={model.salary} onChange={(e) => setModel({ ...model, salary: e.target.value })} fullWidth />
@@ -139,6 +159,7 @@ function MyJobsTab() {
               onChange={(e) => setModel({ ...model, description: e.target.value })}
               multiline
               minRows={5}
+              fullWidth
             />
           </Stack>
         </DialogContent>
@@ -175,28 +196,39 @@ function CreateJobTab({ onCreated }: { onCreated: () => void }) {
 
   return (
     <Paper sx={{ p: 3, border: '1px solid rgba(255,255,255,0.08)' }}>
-      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>Create job</Typography>
+      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>
+        Create job
+      </Typography>
 
-      <Stack spacing={2}>
-        <TextField label="Title" value={model.title} onChange={(e) => setModel({ ...model, title: e.target.value })} />
-        <TextField label="Company" value={model.company} onChange={(e) => setModel({ ...model, company: e.target.value })} />
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+      <Grid container spacing={2}>
+        <Grid size={12}>
+          <TextField label="Title" value={model.title} onChange={(e) => setModel({ ...model, title: e.target.value })} fullWidth />
+        </Grid>
+        <Grid size={12}>
+          <TextField label="Company" value={model.company} onChange={(e) => setModel({ ...model, company: e.target.value })} fullWidth />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <TextField label="Location" value={model.location} onChange={(e) => setModel({ ...model, location: e.target.value })} fullWidth />
+        </Grid>
+        <Grid size={{ xs: 12, sm: 6 }}>
           <TextField label="Salary" value={model.salary} onChange={(e) => setModel({ ...model, salary: e.target.value })} fullWidth />
-        </Stack>
-        <TextField
-          label="Description"
-          value={model.description}
-          onChange={(e) => setModel({ ...model, description: e.target.value })}
-          multiline
-          minRows={6}
-        />
+        </Grid>
+        <Grid size={12}>
+          <TextField
+            label="Description"
+            value={model.description}
+            onChange={(e) => setModel({ ...model, description: e.target.value })}
+            multiline
+            minRows={6}
+            fullWidth
+          />
+        </Grid>
+      </Grid>
 
-        <Stack direction="row" justifyContent="flex-end">
-          <Button variant="contained" disabled={saving} onClick={() => void create()}>
-            {saving ? 'Creating…' : 'Create job'}
-          </Button>
-        </Stack>
+      <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mt: 2 }}>
+        <Button variant="contained" disabled={saving} onClick={() => void create()}>
+          {saving ? 'Creating…' : 'Create job'}
+        </Button>
       </Stack>
     </Paper>
   )
