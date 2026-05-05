@@ -30,20 +30,30 @@ public class SavedJobsController : ControllerBase
             .SavedJobs.Where(s => s.UserId == userId)
             .OrderByDescending(s => s.SavedAt)
             .Join(
-                _context.JobPostings,
+                _context.JobPostings.IgnoreQueryFilters(),
                 s => s.JobPostingId,
                 j => j.Id,
-                (s, j) =>
-                    new
+                (s, j) => new { s, j }
+            )
+            .Join(
+                _context.Users,
+                sj => sj.j.OwnerId,
+                u => u.Id,
+                (sj, u) => new
+                {
+                    sj.s.Id,
+                    sj.s.JobPostingId,
+                    sj.s.SavedAt,
+                    Job = new
                     {
-                        s.Id,
-                        s.JobPostingId,
-                        s.SavedAt,
-                        j.Title,
-                        j.Company,
-                        j.Location,
-                        j.Salary,
-                    }
+                        sj.j.Id,
+                        sj.j.Title,
+                        Company = !string.IsNullOrEmpty(sj.j.Company) ? sj.j.Company : u.CompanyName,
+                        sj.j.Location,
+                        sj.j.Salary,
+                        sj.j.IsDeleted,
+                    },
+                }
             )
             .ToListAsync();
 

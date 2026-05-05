@@ -20,6 +20,7 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
       setUnread(0)
       return
     }
+
     try {
       const res = await api.get('/notifications/unread-count')
       setUnread(res.data.count ?? 0)
@@ -28,14 +29,20 @@ export function NotificationsProvider({ children }: { children: React.ReactNode 
     }
   }
 
-  const decrementUnread = (by: number = 1) => setUnread(prev => Math.max(0, prev - by))
+  const decrementUnread = (by: number = 1) => {
+    setUnread((prev) => Math.max(0, prev - by))
+  }
+
   const clearUnread = () => setUnread(0)
 
   useEffect(() => {
     void refreshUnread()
   }, [user])
 
-  const value = useMemo(() => ({ unread, refreshUnread, decrementUnread, clearUnread }), [unread])
+  const value = useMemo(
+    () => ({ unread, refreshUnread, decrementUnread, clearUnread }),
+    [unread]
+  )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

@@ -13,6 +13,22 @@ Console.WriteLine($"[DB] {dbPath}");
 builder.Services.AddControllers();
 builder.Services.AddAuthorization();
 builder.Services.AddScoped<JobService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
+
+var emailSettings = builder.Configuration.GetSection("EmailSettings");
+builder
+    .Services.AddFluentEmail(emailSettings["FromEmail"] ?? "noreply@findajob.com")
+    .AddSmtpSender(new System.Net.Mail.SmtpClient
+    {
+        Host = emailSettings["Host"] ?? "localhost",
+        Port = int.Parse(emailSettings["Port"] ?? "1025"),
+        EnableSsl = bool.Parse(emailSettings["EnableSsl"] ?? "false"),
+        UseDefaultCredentials = false,
+        Credentials = new System.Net.NetworkCredential(
+            emailSettings["Username"] ?? "",
+            emailSettings["Password"] ?? ""
+        )
+    });
 
 builder.Services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(connectionString));
 

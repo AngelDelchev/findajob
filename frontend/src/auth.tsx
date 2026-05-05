@@ -1,34 +1,35 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { api } from './api'
 
-type AuthUser = {
+type User = {
   id: string
   email: string
-  firstName: string
-  lastName: string
-  companyName?: string | null
-  professionalTitle?: string | null
+  firstName?: string
+  lastName?: string
+  companyName?: string
+  professionalTitle?: string
   roles: string[]
 }
 
 type AuthContextType = {
-  user: AuthUser | null
+  user: User | null
   loading: boolean
-  refreshUser: () => Promise<void>
   login: (loginName: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null)
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   const refreshUser = async () => {
     try {
-      const response = await api.get('/auth/me')
-      setUser(response.data)
+      const res = await api.get('/auth/me')
+      setUser(res.data)
     } catch {
       setUser(null)
     }
@@ -37,7 +38,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (loginName: string, password: string) => {
     try {
       await api.post('/auth/login', { loginName, password })
-      await refreshUser()
+      const res = await api.get('/auth/me')
+      setUser(res.data)
       return true
     } catch {
       setUser(null)
@@ -46,13 +48,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const logout = async () => {
-    await api.post('/auth/logout')
-    setUser(null)
+    try {
+      await api.post('/auth/logout')
+    } finally {
+      setUser(null)
+    }
   }
 
   useEffect(() => {
     const init = async () => {
-      setLoading(true)
       await refreshUser()
       setLoading(false)
     }
@@ -64,9 +68,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       loading,
-      refreshUser,
       login,
-      logout
+      logout,
+      refreshUser,
     }),
     [user, loading]
   )
@@ -75,9 +79,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext)
-  if (!context) {
-    throw new Error('useAuth must be used inside AuthProvider')
+  const ctx = useContext(AuthContext)
+  if (!ctx) {
+    throw new Error('useAuth must be used within AuthProvider')
   }
-  return context
+  return ctx
 }
