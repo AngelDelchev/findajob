@@ -12,7 +12,6 @@ import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
 import Divider from '@mui/material/Divider'
 import Grid from '@mui/material/Grid'
-import InputAdornment from '@mui/material/InputAdornment'
 import Paper from '@mui/material/Paper'
 import Snackbar from '@mui/material/Snackbar'
 import Stack from '@mui/material/Stack'
@@ -20,9 +19,7 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import SearchIcon from '@mui/icons-material/Search'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
-import WorkIcon from '@mui/icons-material/Work'
 import BoltIcon from '@mui/icons-material/Bolt'
-import PersonIcon from '@mui/icons-material/Person'
 import { Select as MuiSelect, MenuItem } from '@mui/material'
 
 type JobPosting = {
@@ -33,6 +30,7 @@ type JobPosting = {
   description: string
   location: string
   salary: string
+  jobType?: string
   tags: string[]
 }
 
