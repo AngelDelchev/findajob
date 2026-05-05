@@ -114,6 +114,6 @@ using (var scope = app.Services.CreateScope())
 }
 app.MapControllers();
 
-app.MapGet("/", () => Results.Ok("findajob API is running"));
+app.MapFallbackToFile("index.html");
 
 app.Run();
