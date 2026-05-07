@@ -21,6 +21,7 @@ import SearchIcon from '@mui/icons-material/Search'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
 import BoltIcon from '@mui/icons-material/Bolt'
 import { Select as MuiSelect, MenuItem } from '@mui/material'
+import PublicProfileView from '../components/PublicProfileView'
 
 type JobPosting = {
   id: number
@@ -46,6 +47,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
+  const [error, setError] = useState('')
   const [snack, setSnack] = useState({ open: false, message: '' })
   const [friendStatus, setFriendStatus] = useState({ isFriend: false, requestSent: false, requestReceived: false })
 
@@ -98,12 +100,13 @@ export default function Home() {
 
   const performSearch = async (search = '') => {
     setLoading(true)
+    setError('')
     try {
       if (searchType === 'jobs') {
         const res = await api.get('/jobs', {
           params: search.trim() ? { search } : {},
         })
-        const data = res.data ?? []
+        const data = Array.isArray(res.data) ? res.data : []
         setJobs(data)
         setPeople([])
         if (data.length > 0) setSelectedJob(data[0])
@@ -112,12 +115,16 @@ export default function Home() {
         const res = await api.get('/profiles/search', {
           params: { search },
         })
-        const data = res.data ?? []
+        const data = Array.isArray(res.data) ? res.data : []
+        console.log('Search Results:', data)
         setPeople(data)
         setJobs([])
         if (data.length > 0) setSelectedPerson(data[0])
         else setSelectedPerson(null)
       }
+    } catch (err: any) {
+      console.error('Search failed:', err)
+      setError('An error occurred while fetching results.')
     } finally {
       setLoading(false)
     }
@@ -250,6 +257,7 @@ export default function Home() {
           />
           <Button type="submit" variant="contained" sx={{ px: 4, fontWeight: 800 }}>Search</Button>
         </Stack>
+        {error && <Typography color="error" sx={{ px: 2, py: 1, fontWeight: 700 }}>{error}</Typography>}
       </Paper>
 
       {loading ? (
@@ -301,27 +309,43 @@ export default function Home() {
                     )}
                   </CardContent>
                 </Card>
-              )) : people.map((person) => (
+              )) : people.map((person, idx) => (
                 <Card 
-                  key={person.id} 
+                  key={person.id || person.Id || `person-${idx}`} 
                   onClick={() => setSelectedPerson(person)}
                   sx={{ 
                     cursor: 'pointer',
                     border: '1px solid',
-                    borderColor: selectedPerson?.id === person.id ? 'primary.main' : 'rgba(255,255,255,0.08)',
-                    backgroundColor: selectedPerson?.id === person.id ? 'rgba(0,229,255,0.03)' : 'background.paper',
+                    borderColor: (selectedPerson?.id || selectedPerson?.Id) === (person.id || person.Id) ? 'primary.main' : 'rgba(255,255,255,0.08)',
+                    backgroundColor: (selectedPerson?.id || selectedPerson?.Id) === (person.id || person.Id) ? 'rgba(0,229,255,0.03)' : 'background.paper',
                     '&:hover': { borderColor: 'primary.main', backgroundColor: 'rgba(0,229,255,0.01)' },
                     transition: 'all 0.2s'
                   }}
                 >
                   <CardContent sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 2 }}>
-                    <Box sx={{ width: 64, height: 64, borderRadius: '50%', backgroundColor: 'primary.main', color: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 900, backgroundImage: person.avatarUrl ? `url(${person.avatarUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }}>
-                      {!person.avatarUrl && `${person.firstName?.[0]}${person.lastName?.[0]}`}
+                    <Box sx={{ 
+                      width: 64, 
+                      height: 64, 
+                      borderRadius: '50%', 
+                      backgroundColor: 'primary.main', 
+                      color: 'background.default', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center', 
+                      fontSize: '1.5rem', 
+                      fontWeight: 900, 
+                      backgroundImage: (person.avatarUrl || person.AvatarUrl) ? `url(${person.avatarUrl || person.AvatarUrl})` : 'none', 
+                      backgroundSize: 'cover', 
+                      backgroundPosition: 'center' 
+                    }}>
+                      {!(person.avatarUrl || person.AvatarUrl) && `${(person.firstName || person.FirstName || '?')[0]}${(person.lastName || person.LastName || '')[0]}`}
                     </Box>
                     <Box sx={{ flex: 1 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.2 }}>{person.firstName} {person.lastName}</Typography>
-                      <Typography variant="body2" sx={{ opacity: 0.7, fontWeight: 700 }}>{person.professionalTitle || (person.companyName ? person.companyName : 'Professional')}</Typography>
-                      <Typography variant="caption" sx={{ opacity: 0.5 }}>{person.city}, {person.country}</Typography>
+                      <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.2 }}>{person.firstName || person.FirstName} {person.lastName || person.LastName}</Typography>
+                      <Typography variant="body2" sx={{ opacity: 0.7, fontWeight: 700 }}>
+                        {(person.professionalTitle || person.ProfessionalTitle) || (person.companyName || person.CompanyName ? (person.companyName || person.CompanyName) : 'Professional')}
+                      </Typography>
+                      <Typography variant="caption" sx={{ opacity: 0.5 }}>{person.city || person.City}, {person.country || person.Country}</Typography>
                     </Box>
                   </CardContent>
                 </Card>
@@ -375,7 +399,8 @@ export default function Home() {
                       <Grid size={4}>
                         <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800, textTransform: 'uppercase' }}>Job Type</Typography>
                         <Typography sx={{ fontWeight: 700 }}>{selectedJob.jobType || 'Full-time'}</Typography>
-                      </Grid>                    </Grid>
+                      </Grid>
+                    </Grid>
 
                     <Box sx={{ mb: 4 }}>
                       <Typography variant="h6" sx={{ fontWeight: 900, mb: 2, display: 'flex', alignItems: 'center' }}>
@@ -408,60 +433,29 @@ export default function Home() {
                   </Box>
                 ) : (
                   <Box>
-                    <Box sx={{ height: 120, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 1, mb: -8, backgroundImage: selectedPerson.bannerUrl ? `url(${selectedPerson.bannerUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center' }} />
-                    <Box sx={{ px: 2 }}>
-                      <Box sx={{ width: 100, height: 100, borderRadius: '50%', border: '4px solid #02060d', backgroundColor: 'primary.main', color: 'background.default', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '2.5rem', fontWeight: 900, backgroundImage: selectedPerson.avatarUrl ? `url(${selectedPerson.avatarUrl})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', mb: 2 }}>
-                        {!selectedPerson.avatarUrl && `${selectedPerson.firstName?.[0]}${selectedPerson.lastName?.[0]}`}
-                      </Box>
-                      
-                      <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                        <Box>
-                          <Typography variant="h4" sx={{ fontWeight: 900 }}>{selectedPerson.firstName} {selectedPerson.lastName}</Typography>
-                          <Typography variant="h6" sx={{ opacity: 0.9 }}>{selectedPerson.professionalTitle || (selectedPerson.companyName ? selectedPerson.companyName : 'Professional')}</Typography>
-                          <Typography sx={{ opacity: 0.6 }}>{selectedPerson.city}, {selectedPerson.country}</Typography>
-                        </Box>
-
-                        <Stack direction="row" spacing={1}>
-                          {user?.id !== selectedPerson.id && (
-                            <>
-                              {friendStatus.isFriend ? (
-                                <Button variant="outlined" disabled sx={{ borderRadius: 20, fontWeight: 900 }}>Friends</Button>
-                              ) : friendStatus.requestSent ? (
-                                <Button variant="outlined" disabled sx={{ borderRadius: 20, fontWeight: 900 }}>Request Sent</Button>
-                              ) : (
-                                <Button variant="contained" sx={{ borderRadius: 20, fontWeight: 900 }} onClick={sendFriendRequest}>
-                                  {friendStatus.requestReceived ? 'Accept Request' : 'Add Friend'}
-                                </Button>
-                              )}
-                              <Button variant="outlined" component={RouterLink} to={`/messages?user=${selectedPerson.id}`} sx={{ borderRadius: 20, fontWeight: 900 }}>Message</Button>
-                            </>
-                          )}
-                        </Stack>
+                    <PublicProfileView profile={selectedPerson} />
+                    
+                    <Box sx={{ px: 1, mt: 2 }}>
+                      <Stack direction="row" spacing={1} justifyContent="flex-start">
+                        {user?.id !== (selectedPerson.id || selectedPerson.Id) && (
+                          <>
+                            {friendStatus.isFriend ? (
+                              <Button variant="outlined" disabled sx={{ borderRadius: 20, fontWeight: 900 }}>Friends</Button>
+                            ) : friendStatus.requestSent ? (
+                              <Button variant="outlined" disabled sx={{ borderRadius: 20, fontWeight: 900 }}>Request Sent</Button>
+                            ) : (
+                              <Button variant="contained" sx={{ borderRadius: 20, fontWeight: 900 }} onClick={sendFriendRequest}>
+                                {friendStatus.requestReceived ? 'Accept Request' : 'Add Friend'}
+                              </Button>
+                            )}
+                            <Button variant="outlined" component={RouterLink} to={`/messages?userId=${selectedPerson.id || selectedPerson.Id}`} sx={{ borderRadius: 20, fontWeight: 900 }}>Message</Button>
+                          </>
+                        )}
                       </Stack>
+                    </Box>
 
-                      <Divider sx={{ my: 3, opacity: 0.1 }} />
-
-                      <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>About</Typography>
-                      <Typography sx={{ opacity: 0.8, lineHeight: 1.7 }}>{selectedPerson.bio || 'No bio provided.'}</Typography>
-
-                      {selectedPerson.companyName && (
-                        <>
-                          <Divider sx={{ my: 3, opacity: 0.1 }} />
-                          <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>Company Details</Typography>
-                          <Grid container spacing={2}>
-                            <Grid size={6}>
-                              <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800 }}>Company Size</Typography>
-                              <Typography sx={{ fontWeight: 700 }}>{selectedPerson.companySize || 'Not specified'}</Typography>
-                            </Grid>
-                            <Grid size={6}>
-                              <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800 }}>Industry</Typography>
-                              <Typography sx={{ fontWeight: 700 }}>{selectedPerson.industry || 'Not specified'}</Typography>
-                            </Grid>
-                          </Grid>
-                        </>
-                      )}
-
-                      <Stack direction="row" spacing={1} sx={{ mt: 4, justifyContent: 'flex-end' }}>
+                    <Box sx={{ px: 1, mt: 4 }}>
+                      <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
                         <Button size="small" variant="text" color="error" sx={{ fontWeight: 700 }}>Report</Button>
                         <Button size="small" variant="text" sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.4)' }}>Block</Button>
                       </Stack>

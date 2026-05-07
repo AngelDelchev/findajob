@@ -86,6 +86,24 @@ public class AdminController : ControllerBase
     {
         var jobs = await _context
             .JobPostings.IgnoreQueryFilters()
+            .Join(
+                _context.Users,
+                j => j.OwnerId,
+                u => u.Id,
+                (j, u) => new
+                {
+                    j.Id,
+                    j.Title,
+                    Company = !string.IsNullOrEmpty(j.Company) ? j.Company : u.CompanyName,
+                    j.Location,
+                    j.Salary,
+                    JobType = !string.IsNullOrEmpty(j.JobType) ? j.JobType : "Full-time",
+                    j.Description,
+                    j.IsDeleted,
+                    j.CreatedAt,
+                    j.Tags
+                }
+            )
             .OrderByDescending(j => j.CreatedAt)
             .ToListAsync();
 
@@ -378,7 +396,7 @@ public class AdminController : ControllerBase
     {
         Console.WriteLine($"[Admin] Deleting registration: {id}");
         var reg = await _context.PendingRegistrations.FirstOrDefaultAsync(p => p.Id == id);
-        if (reg == null) 
+        if (reg == null)
         {
             Console.WriteLine($"[Admin] Registration not found: {id}");
             return NotFound();

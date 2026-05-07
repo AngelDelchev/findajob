@@ -40,7 +40,8 @@ public class FriendshipsController : ControllerBase
 
         var users = await _userManager.Users
             .Where(u => friendIds.Contains(u.Id))
-            .Select(u => new {
+            .Select(u => new
+            {
                 u.Id,
                 u.FirstName,
                 u.LastName,
@@ -70,11 +71,13 @@ public class FriendshipsController : ControllerBase
             .Where(u => otherUserIds.Contains(u.Id))
             .ToListAsync();
 
-        var result = requests.Select(r => {
+        var result = requests.Select(r =>
+        {
             var isOutgoing = r.SenderId == userId;
             var otherId = isOutgoing ? r.ReceiverId : r.SenderId;
             var s = others.FirstOrDefault(u => u.Id == otherId);
-            return new {
+            return new
+            {
                 r.Id,
                 r.SenderId,
                 r.ReceiverId,
@@ -99,15 +102,16 @@ public class FriendshipsController : ControllerBase
         var alreadyFriends = await _context.Friendships.AnyAsync(f => f.UserId == userId && f.FriendId == receiverId);
         if (alreadyFriends) return BadRequest(new { message = "You are already friends." });
 
-        var existing = await _context.FriendRequests.FirstOrDefaultAsync(r => 
+        var existing = await _context.FriendRequests.FirstOrDefaultAsync(r =>
             r.SenderId == userId && r.ReceiverId == receiverId && r.Status == "Pending");
-        
+
         if (existing != null) return Ok(new { message = "Request already sent." });
 
         var request = new FriendRequest { SenderId = userId, ReceiverId = receiverId };
         _context.FriendRequests.Add(request);
 
-        _context.Notifications.Add(new Notification {
+        _context.Notifications.Add(new Notification
+        {
             UserId = receiverId,
             Title = "New friend request",
             Message = "Someone wants to connect with you.",
@@ -125,24 +129,26 @@ public class FriendshipsController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var request = await _context.FriendRequests.FindAsync(id);
-        
+
         if (request == null || request.ReceiverId != userId) return NotFound();
         if (request.SenderId == userId) return BadRequest(new { message = "You cannot add yourself as a friend." });
 
         var alreadyFriends = await _context.Friendships.AnyAsync(f => f.UserId == userId && f.FriendId == request.SenderId);
-        if (alreadyFriends) {
+        if (alreadyFriends)
+        {
             request.Status = "Accepted";
             await _context.SaveChangesAsync();
             return Ok(new { message = "You are already friends." });
         }
 
         request.Status = "Accepted";
-        
+
         // Create bidirectional friendship
         _context.Friendships.Add(new Friendship { UserId = userId, FriendId = request.SenderId });
         _context.Friendships.Add(new Friendship { UserId = request.SenderId, FriendId = userId });
 
-        _context.Notifications.Add(new Notification {
+        _context.Notifications.Add(new Notification
+        {
             UserId = request.SenderId,
             Title = "Friend request accepted",
             Message = "You have a new connection!",
@@ -160,7 +166,7 @@ public class FriendshipsController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var request = await _context.FriendRequests.FindAsync(id);
-        
+
         if (request == null || request.ReceiverId != userId) return NotFound();
 
         request.Status = "Rejected";

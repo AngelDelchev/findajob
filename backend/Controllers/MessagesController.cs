@@ -152,7 +152,8 @@ public class MessagesController : ControllerBase
         var iBlockedThem = await _context.BlockedUsers.AnyAsync(b => b.BlockerId == userId && b.BlockedId == otherUserId);
         var theyBlockedMe = await _context.BlockedUsers.AnyAsync(b => b.BlockerId == otherUserId && b.BlockedId == userId);
 
-        return Ok(new {
+        return Ok(new
+        {
             messages,
             iBlockedThem,
             theyBlockedMe

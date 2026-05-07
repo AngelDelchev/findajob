@@ -51,12 +51,15 @@ public class JobsController : ControllerBase
         job.CreatedAt = DateTime.UtcNow;
         job.IsDeleted = false;
 
-        // Populate company info from profile
-        var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
-        if (profile != null)
+        // Only auto-populate if missing
+        if (string.IsNullOrEmpty(job.Company))
         {
-            job.Company = profile.CompanyName;
-            job.CompanyDescription = profile.Bio;
+            var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
+            if (profile != null)
+            {
+                job.Company = profile.CompanyName;
+                job.CompanyDescription = profile.Bio;
+            }
         }
 
         await _jobService.CreateJobAsync(job);
@@ -73,14 +76,6 @@ public class JobsController : ControllerBase
 
         job.Id = id;
         var isAdmin = User.IsInRole("Admin");
-
-        // Re-populate company info from profile to ensure it stays in sync
-        var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
-        if (profile != null)
-        {
-            job.Company = profile.CompanyName;
-            job.CompanyDescription = profile.Bio;
-        }
 
         var success = await _jobService.UpdateJobAsync(job, userId, isAdmin);
 

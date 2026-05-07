@@ -82,13 +82,22 @@ export default function JobFormFields({
 
   return (
     <Stack spacing={2.5} sx={{ mt: 1 }}>
-      <TextField 
-        label="Job Title" 
-        value={form.title} 
-        onChange={(e) => set('title', e.target.value)} 
-        fullWidth 
-        required 
-      />
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField 
+          label="Job Title" 
+          value={form.title} 
+          onChange={(e) => set('title', e.target.value)} 
+          fullWidth 
+          required 
+        />
+        <TextField 
+          label="Company Name" 
+          value={form.company} 
+          onChange={(e) => set('company', e.target.value)} 
+          fullWidth 
+          required 
+        />
+      </Stack>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <Autocomplete
