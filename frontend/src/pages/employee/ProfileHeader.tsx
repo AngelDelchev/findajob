@@ -183,7 +183,10 @@ export default function ProfileHeader({ profile, onRefresh }: { profile: any, on
               <TextField label="Company Name" value={form.companyName || ''} onChange={(e) => setForm({...form, companyName: e.target.value})} fullWidth />
             )}
             <TextField label="Headline / Professional Title" value={form.professionalTitle || ''} onChange={(e) => setForm({...form, professionalTitle: e.target.value})} fullWidth />
+            <TextField label="Phone Number" value={form.phoneNumber || ''} onChange={(e) => setForm({...form, phoneNumber: e.target.value})} fullWidth />
             <TextField label="Bio" value={form.bio || ''} onChange={(e) => setForm({...form, bio: e.target.value})} fullWidth multiline minRows={4} />
+            <TextField label="Address Line 1" value={form.addressLine1 || ''} onChange={(e) => setForm({...form, addressLine1: e.target.value})} fullWidth />
+            <TextField label="Address Line 2 (Optional)" value={form.addressLine2 || ''} onChange={(e) => setForm({...form, addressLine2: e.target.value})} fullWidth />
             <Stack direction="row" spacing={2}>
               <Autocomplete
                 fullWidth
@@ -201,6 +204,7 @@ export default function ProfileHeader({ profile, onRefresh }: { profile: any, on
                 onInputChange={(_, val) => setForm({...form, city: val})}
                 renderInput={(params) => <TextField {...params} label="City" />}
               />
+              <TextField label="Postal Code" value={form.postalCode || ''} onChange={(e) => setForm({...form, postalCode: e.target.value})} fullWidth />
             </Stack>
           </Stack>
         </DialogContent>
