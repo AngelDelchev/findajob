@@ -38,7 +38,7 @@ public class ProfilesController : ControllerBase
         if (user == null) return Unauthorized();
 
         var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
-        
+
         var experiences = await _context.Experiences.Where(e => e.UserId == userId).ToListAsync();
         var educations = await _context.Educations.Where(e => e.UserId == userId).ToListAsync();
         var skills = await _context.Skills.Where(s => s.UserId == userId).ToListAsync();
@@ -137,46 +137,69 @@ public class ProfilesController : ControllerBase
     public async Task<IActionResult> SearchProfiles([FromQuery] string? search)
     {
         var term = (search ?? "").ToLower();
-        
+
         // Search in Identity users
         IQueryable<ApplicationUser> query = _userManager.Users;
 
         if (!string.IsNullOrWhiteSpace(term))
         {
-            query = query.Where(u => u.FirstName.ToLower().Contains(term) 
-                                 || u.LastName.ToLower().Contains(term) 
+            query = query.Where(u => u.FirstName.ToLower().Contains(term)
+                                 || u.LastName.ToLower().Contains(term)
                                  || u.Email.ToLower().Contains(term)
                                  || (u.PhoneNumber != null && u.PhoneNumber.Contains(term)));
         }
 
         var users = await query.Take(20).ToListAsync();
-
         var userIds = users.Select(u => u.Id).ToList();
 
-        // Join with profiles for extra info
-        var profiles = await _context.UserProfiles
-            .Where(p => userIds.Contains(p.UserId))
-            .ToListAsync();
+        // Batch load all related data
+        var profiles = await _context.UserProfiles.Where(p => userIds.Contains(p.UserId)).ToListAsync();
+        var allExps = await _context.Experiences.Where(e => userIds.Contains(e.UserId)).ToListAsync();
+        var allEdus = await _context.Educations.Where(e => userIds.Contains(e.UserId)).ToListAsync();
+        var allSkills = await _context.Skills.Where(s => userIds.Contains(s.UserId)).ToListAsync();
 
-        var results = users.Select(user => {
+        var results = users.Select(user =>
+        {
             var p = profiles.FirstOrDefault(prof => prof.UserId == user.Id);
-            return new {
-                user.Id,
-                user.FirstName,
-                user.LastName,
-                user.Email,
-                user.PhoneNumber,
-                user.CompanyName,
-                user.ProfessionalTitle,
-                Bio = p?.Bio ?? "",
-                City = p?.City ?? "",
-                Country = p?.Country ?? "",
-                AvatarUrl = string.IsNullOrEmpty(p?.AvatarFileName) ? null : $"/uploads/avatars/{p.AvatarFileName}",
-                BannerUrl = string.IsNullOrEmpty(p?.BannerFileName) ? null : $"/uploads/banners/{p.BannerFileName}",
-                CompanySize = p?.CompanySize ?? "",
-                Industry = p?.Industry ?? "",
-                TechStack = p?.TechStack ?? "",
-                Benefits = p?.Benefits ?? ""
+            return new
+            {
+                id = user.Id,
+                firstName = user.FirstName,
+                lastName = user.LastName,
+                companyName = user.CompanyName ?? p?.CompanyName ?? "",
+                professionalTitle = user.ProfessionalTitle,
+                bio = p?.Bio ?? "",
+                city = p?.City ?? "",
+                country = p?.Country ?? "",
+                avatarUrl = string.IsNullOrEmpty(p?.AvatarFileName) ? null : $"/uploads/avatars/{p.AvatarFileName}",
+                bannerUrl = string.IsNullOrEmpty(p?.BannerFileName) ? null : $"/uploads/banners/{p.BannerFileName}",
+                companySize = p?.CompanySize ?? "",
+                industry = p?.Industry ?? "",
+                techStack = p?.TechStack ?? "",
+                benefits = p?.Benefits ?? "",
+                experiences = allExps.Where(e => e.UserId == user.Id).Select(e => new
+                {
+                    id = e.Id,
+                    title = e.Title,
+                    company = e.Company,
+                    startDate = e.StartDate,
+                    endDate = e.EndDate,
+                    description = e.Description
+                }).ToList(),
+                educations = allEdus.Where(e => e.UserId == user.Id).Select(e => new
+                {
+                    id = e.Id,
+                    school = e.School,
+                    degree = e.Degree,
+                    fieldOfStudy = e.FieldOfStudy,
+                    startDate = e.StartYear,
+                    endDate = e.EndYear
+                }).ToList(),
+                skills = allSkills.Where(s => s.UserId == user.Id).Select(s => new
+                {
+                    id = s.Id,
+                    name = s.Name
+                }).ToList()
             };
         });
 
@@ -190,23 +213,49 @@ public class ProfilesController : ControllerBase
         if (user == null) return NotFound();
 
         var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == id);
-        
-        return Ok(new {
-            user.Id,
-            user.FirstName,
-            user.LastName,
-            user.Email,
-            user.CompanyName,
-            user.ProfessionalTitle,
-            Bio = profile?.Bio ?? "",
-            City = profile?.City ?? "",
-            Country = profile?.Country ?? "",
-            AvatarUrl = string.IsNullOrEmpty(profile?.AvatarFileName) ? null : $"/uploads/avatars/{profile.AvatarFileName}",
-            BannerUrl = string.IsNullOrEmpty(profile?.BannerFileName) ? null : $"/uploads/banners/{profile.BannerFileName}",
-            CompanySize = profile?.CompanySize ?? "",
-            Industry = profile?.Industry ?? "",
-            TechStack = profile?.TechStack ?? "",
-            Benefits = profile?.Benefits ?? ""
+        var experiences = await _context.Experiences.Where(e => e.UserId == id).ToListAsync();
+        var educations = await _context.Educations.Where(e => e.UserId == id).ToListAsync();
+        var skills = await _context.Skills.Where(s => s.UserId == id).ToListAsync();
+
+        return Ok(new
+        {
+            id = user.Id,
+            firstName = user.FirstName,
+            lastName = user.LastName,
+            companyName = user.CompanyName ?? profile?.CompanyName ?? "",
+            professionalTitle = user.ProfessionalTitle,
+            bio = profile?.Bio ?? "",
+            city = profile?.City ?? "",
+            country = profile?.Country ?? "",
+            avatarUrl = string.IsNullOrEmpty(profile?.AvatarFileName) ? null : $"/uploads/avatars/{profile.AvatarFileName}",
+            bannerUrl = string.IsNullOrEmpty(profile?.BannerFileName) ? null : $"/uploads/banners/{profile.BannerFileName}",
+            companySize = profile?.CompanySize ?? "",
+            industry = profile?.Industry ?? "",
+            techStack = profile?.TechStack ?? "",
+            benefits = profile?.Benefits ?? "",
+            experiences = experiences.Select(e => new
+            {
+                id = e.Id,
+                title = e.Title,
+                company = e.Company,
+                startDate = e.StartDate,
+                endDate = e.EndDate,
+                description = e.Description
+            }),
+            educations = educations.Select(e => new
+            {
+                id = e.Id,
+                school = e.School,
+                degree = e.Degree,
+                fieldOfStudy = e.FieldOfStudy,
+                startDate = e.StartYear,
+                endDate = e.EndYear
+            }),
+            skills = skills.Select(s => new
+            {
+                id = s.Id,
+                name = s.Name
+            })
         });
     }
 

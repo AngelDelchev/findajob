@@ -79,6 +79,14 @@ export default function Employer() {
     }
   }
 
+  const handleOpenCreate = () => {
+    setJobForm({
+      ...jobForm,
+      company: profile?.companyName || ''
+    })
+    setOpenCreate(true)
+  }
+
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
@@ -93,7 +101,7 @@ export default function Employer() {
           <Button variant="outlined" onClick={() => void load()}>
             Refresh
           </Button>
-          <Button variant="contained" size="large" onClick={() => setOpenCreate(true)} sx={{ fontWeight: 900 }}>
+          <Button variant="contained" size="large" onClick={handleOpenCreate} sx={{ fontWeight: 900 }}>
             Post a Job
           </Button>
         </Stack>

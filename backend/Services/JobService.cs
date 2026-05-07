@@ -29,7 +29,7 @@ namespace findajob.Services
                 {
                     tag = new Tag { Name = name };
                     context.Tags.Add(tag);
-                    await context.SaveChangesAsync(); 
+                    await context.SaveChangesAsync();
                 }
 
                 context.JobPostingTags.Add(new JobPostingTag
@@ -76,7 +76,7 @@ namespace findajob.Services
         {
             using var context = await _factory.CreateDbContextAsync();
 
-            var tagNames = job.Tags ?? new List<string>(); 
+            var tagNames = job.Tags ?? new List<string>();
             job.CreatedAt = DateTime.UtcNow;
             job.PostedDate = DateTime.UtcNow;
 
@@ -159,6 +159,7 @@ namespace findajob.Services
             existingJob.Description = job.Description;
             existingJob.Location = job.Location;
             existingJob.Salary = job.Salary;
+            existingJob.JobType = job.JobType;
             existingJob.WorkMode = job.WorkMode;
             existingJob.EmploymentType = job.EmploymentType;
             existingJob.SeniorityLevel = job.SeniorityLevel;

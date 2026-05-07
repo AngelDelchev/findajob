@@ -10,7 +10,7 @@ namespace findajob.Models
         public string ProfessionalTitle { get; set; } = string.Empty;
         public string CompanyName { get; set; } = string.Empty;
         public string Bio { get; set; } = string.Empty;
-        
+
         // New employer fields
         public string CompanySize { get; set; } = "";
         public string Industry { get; set; } = "";

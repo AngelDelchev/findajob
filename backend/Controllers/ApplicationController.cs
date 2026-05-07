@@ -102,7 +102,7 @@ public class ApplicationController : ControllerBase
 
         var isAdmin = User.IsInRole("Admin");
         var job = app.Job ?? await _context.JobPostings.IgnoreQueryFilters().FirstOrDefaultAsync(j => j.Id == app.JobId);
-        
+
         if (!isAdmin && (job == null || job.OwnerId != userId))
             return Forbid();
 
@@ -168,7 +168,7 @@ public class ApplicationController : ControllerBase
 
         var isAdmin = User.IsInRole("Admin");
         var job = await _context.JobPostings.IgnoreQueryFilters().FirstOrDefaultAsync(j => j.Id == app.JobId);
-        
+
         if (!isAdmin && (job == null || job.OwnerId != userId))
             return Forbid();
 

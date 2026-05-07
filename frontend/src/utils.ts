@@ -6,7 +6,7 @@ export const formatSalary = (salary: string | undefined | null) => {
   if (!match) return salary
   
   const currency = match[1]
-  let amount = match[2].replace(/\s/g, '') // strip all spaces
+  const amount = match[2].replace(/\s/g, '') // strip all spaces
   
   if (!amount || isNaN(Number(amount))) {
     return salary // return as is if not a number

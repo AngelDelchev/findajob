@@ -19,11 +19,12 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import PersonIcon from '@mui/icons-material/Person'
 import BlockIcon from '@mui/icons-material/Block'
 import FlagIcon from '@mui/icons-material/Flag'
-import Avatar from '@mui/material/Avatar'
+import CircularProgress from '@mui/material/CircularProgress'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import PublicProfileView from '../components/PublicProfileView'
 
 type InboxItem = {
   otherUserId: string
@@ -566,32 +567,7 @@ export default function Messages() {
         <DialogTitle sx={{ fontWeight: 900 }}>User Profile</DialogTitle>
         <DialogContent dividers>
           {selectedOtherProfile ? (
-            <Box>
-              <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 3 }}>
-                <Avatar 
-                  src={selectedOtherProfile.avatarUrl} 
-                  sx={{ width: 80, height: 80, fontSize: '2rem', fontWeight: 900, backgroundColor: 'primary.main', color: 'background.default' }}
-                >
-                  {selectedOtherProfile.firstName?.[0]}{selectedOtherProfile.lastName?.[0]}
-                </Avatar>
-                <Box>
-                  <Typography variant="h5" sx={{ fontWeight: 900 }}>{selectedOtherProfile.firstName} {selectedOtherProfile.lastName}</Typography>
-                  <Typography sx={{ opacity: 0.7 }}>{selectedOtherProfile.professionalTitle || (selectedOtherProfile.companyName ? selectedOtherProfile.companyName : 'Professional')}</Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.5 }}>{selectedOtherProfile.city}, {selectedOtherProfile.country}</Typography>
-                </Box>
-              </Stack>
-              <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>About</Typography>
-              <Typography sx={{ opacity: 0.8, lineHeight: 1.7 }}>{selectedOtherProfile.bio || 'No bio provided.'}</Typography>
-              
-              {selectedOtherProfile.companyName && (
-                <>
-                  <Divider sx={{ my: 2, opacity: 0.1 }} />
-                  <Typography variant="h6" sx={{ fontWeight: 900, mb: 1 }}>Company Info</Typography>
-                  <Typography sx={{ opacity: 0.8 }}>{selectedOtherProfile.companyName}</Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.6 }}>{selectedOtherProfile.industry} • {selectedOtherProfile.companySize}</Typography>
-                </>
-              )}
-            </Box>
+            <PublicProfileView profile={selectedOtherProfile} />
           ) : <Typography>Loading profile...</Typography>}
         </DialogContent>
         <DialogActions>

@@ -25,7 +25,7 @@ public static class DbInitializer
         // 2. Add monkey (Admin)
         var monkeyByEmail = await userManager.FindByEmailAsync("monkey@findajob.com");
         var monkeyByName = await userManager.FindByNameAsync("monkey");
-        
+
         if (monkeyByEmail == null && monkeyByName == null)
         {
             var monkey = new ApplicationUser
@@ -33,8 +33,8 @@ public static class DbInitializer
                 UserName = "monkey",
                 Email = "monkey@findajob.com",
                 EmailConfirmed = true,
-                CompanyName = "FindAJob Headquarters", 
-                ProfessionalTitle = "System Overlord", 
+                CompanyName = "FindAJob Headquarters",
+                ProfessionalTitle = "System Overlord",
             };
 
             var result = await userManager.CreateAsync(monkey, "1GetAjObScaMMErLSD!");
@@ -56,7 +56,7 @@ public static class DbInitializer
                 UserName = "boss",
                 Email = "boss@company.com",
                 EmailConfirmed = true,
-                CompanyName = "The Big Corp", 
+                CompanyName = "The Big Corp",
             };
             var result = await userManager.CreateAsync(boss, "1WouldYoULiKEaJoBiNMYCallCeNtER!");
             if (result.Succeeded)
