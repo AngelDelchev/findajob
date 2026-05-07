@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link as RouterLink, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
 import Box from '@mui/material/Box'
@@ -12,6 +12,7 @@ export default function ConfirmEmail() {
   const token = params.get('token')
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
   const [message, setMessage] = useState('Verifying your email...')
+  const verified = useRef(false)
 
   useEffect(() => {
     if (!token) {
@@ -19,6 +20,9 @@ export default function ConfirmEmail() {
       setMessage('Invalid or missing confirmation token.')
       return
     }
+
+    if (verified.current) return
+    verified.current = true
 
     const verify = async () => {
       try {

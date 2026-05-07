@@ -1,9 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "SS/O3ODVgvQ=",
+  "dgSpecHash": "RcpsBj3HwAA=",
   "success": true,
   "projectFilePath": "/home/hakari/code/findajob/backend/findajob.csproj",
   "expectedPackageFiles": [
+    "/home/hakari/.nuget/packages/bogus/35.6.5/bogus.35.6.5.nupkg.sha512",
     "/home/hakari/.nuget/packages/fluentemail.core/3.0.0/fluentemail.core.3.0.0.nupkg.sha512",
     "/home/hakari/.nuget/packages/fluentemail.smtp/3.0.0/fluentemail.smtp.3.0.0.nupkg.sha512",
     "/home/hakari/.nuget/packages/humanizer.core/2.14.1/humanizer.core.2.14.1.nupkg.sha512",

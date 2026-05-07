@@ -103,6 +103,15 @@ public class AuthController : ControllerBase
             return BadRequest(new { message = "Token has expired." });
         }
 
+        // Check if user already exists (handle potential race conditions or double clicks)
+        var existingUser = await _userManager.FindByEmailAsync(pending.Email);
+        if (existingUser != null)
+        {
+            _context.PendingRegistrations.Remove(pending);
+            await _context.SaveChangesAsync();
+            return Ok(new { message = "Email confirmed! You can now log in." });
+        }
+
         var user = new ApplicationUser
         {
             UserName = pending.Email,
@@ -118,6 +127,14 @@ public class AuthController : ControllerBase
         var result = await _userManager.CreateAsync(user);
         if (!result.Succeeded)
         {
+            // If creation failed but it's because the user now exists (race condition)
+            if (result.Errors.Any(e => e.Code == "DuplicateUserName" || e.Code == "DuplicateEmail"))
+            {
+                _context.PendingRegistrations.Remove(pending);
+                await _context.SaveChangesAsync();
+                return Ok(new { message = "Email confirmed! You can now log in." });
+            }
+
             return BadRequest(new { message = "Account creation failed.", errors = result.Errors.Select(e => e.Description) });
         }
 
