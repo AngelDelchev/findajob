@@ -8,7 +8,7 @@ FindAJob is a comprehensive, full-stack job board platform designed to connect t
 
 * **Role-Based Workflows**: Dedicated dashboards and feature sets depending on whether you are an `Employee` looking for jobs, an `Employer` posting opportunities, or an `Admin` managing the platform.
 * **Dynamic Job Seeding**: Every time the server starts, the database is wiped clean of stale test data and dynamically populated with 200–300 highly realistic mock job postings using the [Bogus](https://github.com/bchavez/Bogus) library.
-* **Top Tech Company Profiles**: Automatically seeds verified employer accounts representing industry leaders (Google, Microsoft, Sony, Samsung, Apple, and The Big Corp).
+* **Top Tech Company Profiles**: Automatically seeds verified employer accounts representing industry leaders (Google, Microsoft, Sony, Samsung, Apple, and Arasaka).
 * **Rich User Profiles**: Employees and employers can manage their public profiles, complete with custom avatars, banners, biographical details, location data, and a list of specific skills, technologies, or benefits.
 * **Integrated File Uploads**: Image uploads (like user avatars and company banners) are stored durably within the project's `wwwroot/uploads` folder, ensuring they persist seamlessly when the project is shared or moved on a flash drive.
 * **Email Verification**: Implemented an automated email confirmation flow during the registration process to ensure valid user identities.
@@ -82,7 +82,7 @@ The platform comes pre-configured with several seeded accounts for testing and d
 * **Password:** `1GetAjObScaMMErLSD!`
 
 **Employers (Tech Giants):**
-* **Emails:** `google@example.com`, `microsoft@example.com`, `sony@example.com`, `samsung@example.com`, `apple@example.com`, `boss@company.com`
+* **Emails:** `google@example.com`, `microsoft@example.com`, `sony@example.com`, `samsung@example.com`, `apple@example.com`, `boss@company.com`, `arasaka@example.com`
 * **Password:** `1WouldYoULiKEaJoBiNMYCallCeNtER!`
 
 *(Note: All seeded employer accounts share the same password. Feel free to log in as any of them to view their company profiles and manage their dynamically generated job postings.)*
