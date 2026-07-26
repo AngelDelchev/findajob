@@ -1,0 +1,42 @@
+# --- .NET ---
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# --- Node ---
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# --- Runtime data (never commit) ---
+# The SQLite database holds real user accounts and password hashes.
+*.db
+*.db-shm
+*.db-wal
+backend/App_Data/
+
+# --- Secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+cookies.txt
+
+# --- Logs ---
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Editors / OS ---
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.sw?
