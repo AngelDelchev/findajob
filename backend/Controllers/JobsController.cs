@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using findajob.Data;
 using findajob.Models;
@@ -22,117 +23,185 @@ public class JobsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetJobs([FromQuery] string? search)
+    public async Task<IActionResult> GetJobs(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = JobService.DefaultPageSize,
+        CancellationToken cancellationToken = default
+    )
     {
-        var jobs = await _jobService.SearchJobsAsync(search ?? "");
-        return Ok(jobs);
+        var result = await _jobService.SearchJobsAsync(search, page, pageSize, cancellationToken);
+
+        return Ok(new
+        {
+            items = result.Items,
+            page = result.Page,
+            pageSize = result.PageSize,
+            total = result.Total,
+            totalPages = result.TotalPages,
+        });
     }
 
+    /// <summary>
+    /// The vocabularies the job form offers. Serving them from the API keeps the UI
+    /// from hard-coding lists that can drift away from what the server accepts.
+    /// </summary>
+    [HttpGet("metadata")]
+    public IActionResult GetMetadata() =>
+        Ok(new
+        {
+            jobTypes = JobConstants.JobTypes,
+            workModes = JobConstants.WorkModes,
+            employmentTypes = JobConstants.EmploymentTypes,
+            seniorityLevels = JobConstants.SeniorityLevels,
+            applicationStatuses = ApplicationStatus.All,
+        });
+
     [HttpGet("{id:int}")]
-    public async Task<IActionResult> GetJob(int id)
+    public async Task<IActionResult> GetJob(int id, CancellationToken cancellationToken)
     {
-        var job = await _jobService.GetJobByIdAsync(id);
-        if (job == null)
+        var job = await _jobService.GetJobByIdAsync(id, cancellationToken);
+        if (job is null)
+        {
             return NotFound(new { message = "Job not found." });
+        }
 
         return Ok(job);
     }
 
-    [Authorize(Roles = "Employer,Admin")]
+    [Authorize(Roles = Roles.AdminOrEmployer)]
     [HttpPost]
-    public async Task<IActionResult> CreateJob([FromBody] JobPosting job)
+    public async Task<IActionResult> CreateJob([FromBody] JobRequest request, CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
+        var job = request.ToEntity();
         job.OwnerId = userId;
-        job.PostedDate = DateTime.UtcNow;
-        job.CreatedAt = DateTime.UtcNow;
         job.IsDeleted = false;
 
-        // Only auto-populate if missing
-        if (string.IsNullOrEmpty(job.Company))
+        if (string.IsNullOrWhiteSpace(job.Company))
         {
-            var profile = await _context.UserProfiles.FirstOrDefaultAsync(p => p.UserId == userId);
-            if (profile != null)
+            var profile = await _context.UserProfiles.FirstOrDefaultAsync(
+                p => p.UserId == userId,
+                cancellationToken
+            );
+
+            if (profile is not null)
             {
                 job.Company = profile.CompanyName;
                 job.CompanyDescription = profile.Bio;
             }
         }
 
-        await _jobService.CreateJobAsync(job);
-        return Ok(new { message = "Job created successfully.", jobId = job.Id });
+        await _jobService.CreateJobAsync(job, cancellationToken);
+
+        return CreatedAtAction(
+            nameof(GetJob),
+            new { id = job.Id },
+            new { message = "Job created successfully.", jobId = job.Id }
+        );
     }
 
-    [Authorize(Roles = "Employer,Admin")]
+    [Authorize(Roles = Roles.AdminOrEmployer)]
     [HttpPut("{id:int}")]
-    public async Task<IActionResult> UpdateJob(int id, [FromBody] JobPosting job)
+    public async Task<IActionResult> UpdateJob(
+        int id,
+        [FromBody] JobRequest request,
+        CancellationToken cancellationToken
+    )
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
+        var job = request.ToEntity();
         job.Id = id;
-        var isAdmin = User.IsInRole("Admin");
 
-        var success = await _jobService.UpdateJobAsync(job, userId, isAdmin);
+        var updated = await _jobService.UpdateJobAsync(
+            job,
+            userId,
+            User.IsInRole(Roles.Admin),
+            cancellationToken
+        );
 
-        if (!success)
+        if (!updated)
+        {
             return NotFound(new { message = "Job not found or access denied." });
+        }
 
         return Ok(new { message = "Job updated successfully." });
     }
 
-    [Authorize(Roles = "Employer,Admin")]
+    [Authorize(Roles = Roles.AdminOrEmployer)]
     [HttpDelete("{id:int}")]
-    public async Task<IActionResult> DeleteJob(int id)
+    public async Task<IActionResult> DeleteJob(int id, CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var isAdmin = User.IsInRole("Admin");
-        var success = await _jobService.DeleteJobAsync(id, userId, isAdmin);
-
-        if (!success)
-            return NotFound(new { message = "Job not found or access denied." });
-
-        return Ok(new { message = "Job deleted successfully." });
-    }
-
-    [Authorize(Roles = "Employer,Admin")]
-    [HttpGet("mine")]
-    public async Task<IActionResult> GetMyJobs()
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var isAdmin = User.IsInRole("Admin");
-        if (isAdmin)
         {
-            return Ok(await _jobService.GetJobsAsync());
+            return Unauthorized();
         }
 
-        var jobs = await _jobService.GetJobsByOwnerAsync(userId);
-        return Ok(jobs);
+        var deleted = await _jobService.DeleteJobAsync(
+            id,
+            userId,
+            User.IsInRole(Roles.Admin),
+            cancellationToken
+        );
+
+        if (!deleted)
+        {
+            return NotFound(new { message = "Job not found or access denied." });
+        }
+
+        return Ok(new { message = "Job archived." });
     }
 
-    [Authorize(Roles = "Employer,Admin")]
-    [HttpPut("{id:int}/visibility")]
-    public async Task<IActionResult> SetVisibility(int id, [FromBody] SetVisibilityRequest request)
+    [Authorize(Roles = Roles.AdminOrEmployer)]
+    [HttpGet("mine")]
+    public async Task<IActionResult> GetMyJobs(CancellationToken cancellationToken)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var isAdmin = User.IsInRole("Admin");
-        var success = await _jobService.SetJobVisibilityAsync(id, userId, isAdmin, request.IsDeleted);
+        return Ok(await _jobService.GetJobsByOwnerAsync(userId, cancellationToken));
+    }
 
-        if (!success)
+    [Authorize(Roles = Roles.AdminOrEmployer)]
+    [HttpPut("{id:int}/visibility")]
+    public async Task<IActionResult> SetVisibility(
+        int id,
+        [FromBody] SetVisibilityRequest request,
+        CancellationToken cancellationToken
+    )
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
+        var updated = await _jobService.SetJobVisibilityAsync(
+            id,
+            userId,
+            User.IsInRole(Roles.Admin),
+            request.IsDeleted,
+            cancellationToken
+        );
+
+        if (!updated)
+        {
             return NotFound(new { message = "Job not found or access denied." });
+        }
 
         return Ok(new { message = request.IsDeleted ? "Job archived." : "Job restored." });
     }
@@ -140,5 +209,78 @@ public class JobsController : ControllerBase
     public class SetVisibilityRequest
     {
         public bool IsDeleted { get; set; }
+    }
+
+    /// <summary>
+    /// Explicit write model. Binding straight to <see cref="JobPosting"/> let a caller
+    /// set <c>Id</c>, <c>OwnerId</c>, <c>IsDeleted</c> and <c>CreatedAt</c> from the
+    /// request body.
+    /// </summary>
+    public class JobRequest
+    {
+        [Required]
+        [MaxLength(200)]
+        public string Title { get; set; } = "";
+
+        [MaxLength(150)]
+        public string Company { get; set; } = "";
+
+        [MaxLength(4000)]
+        public string CompanyDescription { get; set; } = "";
+
+        [Required]
+        [MaxLength(10000)]
+        public string Description { get; set; } = "";
+
+        [MaxLength(200)]
+        public string Location { get; set; } = "";
+
+        [MaxLength(100)]
+        public string Salary { get; set; } = "";
+
+        [MaxLength(50)]
+        public string JobType { get; set; } = "Full-time";
+
+        [MaxLength(50)]
+        public string WorkMode { get; set; } = "";
+
+        [MaxLength(50)]
+        public string EmploymentType { get; set; } = "";
+
+        [MaxLength(50)]
+        public string SeniorityLevel { get; set; } = "";
+
+        [MaxLength(5000)]
+        public string Requirements { get; set; } = "";
+
+        [MaxLength(5000)]
+        public string Responsibilities { get; set; } = "";
+
+        [MaxLength(5000)]
+        public string Benefits { get; set; } = "";
+
+        public DateTime? Deadline { get; set; }
+
+        public List<string> Tags { get; set; } = [];
+
+        public JobPosting ToEntity() =>
+            new()
+            {
+                Title = Title.Trim(),
+                Company = Company.Trim(),
+                CompanyDescription = CompanyDescription.Trim(),
+                Description = Description.Trim(),
+                Location = Location.Trim(),
+                Salary = Salary.Trim(),
+                JobType = string.IsNullOrWhiteSpace(JobType) ? "Full-time" : JobType.Trim(),
+                WorkMode = WorkMode.Trim(),
+                EmploymentType = EmploymentType.Trim(),
+                SeniorityLevel = SeniorityLevel.Trim(),
+                Requirements = Requirements.Trim(),
+                Responsibilities = Responsibilities.Trim(),
+                Benefits = Benefits.Trim(),
+                Deadline = Deadline,
+                Tags = Tags,
+            };
     }
 }

@@ -1,26 +1,14 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useMemo } from 'react'
 import Autocomplete from '@mui/material/Autocomplete'
 import Chip from '@mui/material/Chip'
 import FormControl from '@mui/material/FormControl'
+import InputAdornment from '@mui/material/InputAdornment'
 import InputLabel from '@mui/material/InputLabel'
 import MenuItem from '@mui/material/MenuItem'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
-import InputAdornment from '@mui/material/InputAdornment'
-import { Select as MuiSelect } from '@mui/material'
-
-const COUNTRIES = [
-  'Bulgaria', 'United States', 'United Kingdom', 'Germany', 'France', 'Canada', 'Australia', 'Japan'
-]
-
-const CITIES: Record<string, string[]> = {
-  'Bulgaria': ['Sofia', 'Plovdiv', 'Varna', 'Burgas'],
-  'United States': ['New York', 'Los Angeles', 'Chicago', 'Houston'],
-  'United Kingdom': ['London', 'Manchester', 'Birmingham', 'Glasgow'],
-}
-
-const JOB_TYPES = ['Full-time', 'Part-time', 'Contract', 'Internship', 'Freelance']
-const CURRENCIES = ['$', '€', '£', 'BGN']
+import { CITIES, COUNTRIES, CURRENCIES, JOB_TYPES } from '../constants'
 
 export type JobFormState = {
   title: string
@@ -32,70 +20,62 @@ export type JobFormState = {
   tags: string[]
 }
 
-export default function JobFormFields({ 
-  form, 
-  setForm 
-}: { 
-  form: JobFormState, 
-  setForm: (val: JobFormState) => void 
-}) {
-  const [country, setCountry] = useState('')
-  const [city, setCity] = useState('')
+type Props = {
+  form: JobFormState
+  setForm: (value: JobFormState) => void
+}
 
-  // Sync internal city/country state with form.location when it changes from outside
-  useEffect(() => {
-    if (form.location && (!city || !country)) {
-      const parts = form.location.split(',').map(s => s.trim())
-      if (parts.length === 2) {
-        setCity(parts[0])
-        setCountry(parts[1])
-      } else if (parts.length === 1) {
-        setCountry(parts[0])
-      }
-    }
-  }, [form.location])
+/** Splits "Sofia, Bulgaria" into its parts without keeping a second copy in state. */
+function splitLocation(location: string): { city: string; country: string } {
+  const parts = location.split(',').map((part) => part.trim())
 
-  // Sync form.location with internal city/country state
-  useEffect(() => {
-    const loc = city ? (country ? `${city}, ${country}` : city) : country
-    if (loc !== form.location) {
-      setForm({ ...form, location: loc })
-    }
-  }, [city, country])
-  
-  // Extract currency and amount from salary string (e.g. "$ 5000")
-  const salaryParts = useMemo(() => {
-    const match = form.salary.match(/^([^0-9\s]+)\s*(.*)$/)
-    if (match) {
-      return { currency: match[1], amount: match[2] }
-    }
-    return { currency: '$', amount: form.salary }
-  }, [form.salary])
-
-  const updateSalary = (currency: string, amount: string) => {
-    setForm({ ...form, salary: `${currency} ${amount}`.trim() })
+  if (parts.length >= 2) {
+    return { city: parts[0], country: parts.slice(1).join(', ') }
   }
 
-  const set = (key: keyof JobFormState, value: any) => {
+  return { city: '', country: parts[0] ?? '' }
+}
+
+function joinLocation(city: string, country: string): string {
+  if (city && country) return `${city}, ${country}`
+  return city || country
+}
+
+export default function JobFormFields({ form, setForm }: Props) {
+  /**
+   * City and country are derived from `form.location` on every render rather than
+   * mirrored into their own state. The previous version kept two copies in sync with
+   * a pair of effects, one of which called `setForm({ ...form })` with a `form` value
+   * captured from an earlier render, so editing a field and then changing the location
+   * in the same tick discarded the first edit.
+   */
+  const { city, country } = useMemo(() => splitLocation(form.location), [form.location])
+
+  const salary = useMemo(() => {
+    const match = form.salary.match(/^([^\d\s]+)\s*(.*)$/)
+    return match ? { currency: match[1], amount: match[2] } : { currency: '$', amount: form.salary }
+  }, [form.salary])
+
+  const update = <K extends keyof JobFormState>(key: K, value: JobFormState[K]) => {
     setForm({ ...form, [key]: value })
   }
 
   return (
     <Stack spacing={2.5} sx={{ mt: 1 }}>
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
-        <TextField 
-          label="Job Title" 
-          value={form.title} 
-          onChange={(e) => set('title', e.target.value)} 
-          fullWidth 
-          required 
+        <TextField
+          label="Job title"
+          value={form.title}
+          onChange={(event) => update('title', event.target.value)}
+          fullWidth
+          required
         />
-        <TextField 
-          label="Company Name" 
-          value={form.company} 
-          onChange={(e) => set('company', e.target.value)} 
-          fullWidth 
-          required 
+        <TextField
+          label="Company name"
+          value={form.company}
+          onChange={(event) => update('company', event.target.value)}
+          fullWidth
+          required
         />
       </Stack>
 
@@ -103,53 +83,69 @@ export default function JobFormFields({
         <Autocomplete
           fullWidth
           freeSolo
-          options={COUNTRIES}
+          options={COUNTRIES as readonly string[]}
           value={country}
-          onInputChange={(_, val: string) => setCountry(val)}
-          renderInput={(params: any) => <TextField {...params} label="Country" />}
+          onInputChange={(_, value) => update('location', joinLocation(city, value))}
+          renderInput={(params) => <TextField {...params} label="Country" />}
         />
         <Autocomplete
           fullWidth
           freeSolo
-          options={CITIES[country] || []}
+          options={CITIES[country] ?? []}
           value={city}
-          onInputChange={(_, val: string) => setCity(val)}
-          renderInput={(params: any) => <TextField {...params} label="City" />}
+          onInputChange={(_, value) => update('location', joinLocation(value, country))}
+          renderInput={(params) => <TextField {...params} label="City" />}
         />
       </Stack>
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
         <FormControl fullWidth>
-          <InputLabel>Job Type</InputLabel>
-          <MuiSelect
-            label="Job Type"
+          <InputLabel id="job-type-label">Job type</InputLabel>
+          <Select
+            labelId="job-type-label"
+            label="Job type"
             value={form.jobType || 'Full-time'}
-            onChange={(e) => set('jobType', e.target.value)}
+            onChange={(event) => update('jobType', event.target.value)}
           >
-            {JOB_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-          </MuiSelect>
+            {JOB_TYPES.map((type) => (
+              <MenuItem key={type} value={type}>
+                {type}
+              </MenuItem>
+            ))}
+          </Select>
         </FormControl>
 
         <TextField
           fullWidth
           label="Salary"
           type="number"
-          value={salaryParts.amount}
-          onChange={(e) => updateSalary(salaryParts.currency, e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <MuiSelect
-                  variant="standard"
-                  value={CURRENCIES.includes(salaryParts.currency) ? salaryParts.currency : '$'}
-                  onChange={(e) => updateSalary(e.target.value as string, salaryParts.amount)}
-                  sx={{ mr: 1, minWidth: 40 }}
-                  disableUnderline
-                >
-                  {CURRENCIES.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-                </MuiSelect>
-              </InputAdornment>
-            ),
+          value={salary.amount}
+          onChange={(event) => update('salary', `${salary.currency} ${event.target.value}`.trim())}
+          slotProps={{
+            input: {
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Select
+                    variant="standard"
+                    disableUnderline
+                    value={
+                      (CURRENCIES as readonly string[]).includes(salary.currency)
+                        ? salary.currency
+                        : '$'
+                    }
+                    onChange={(event) => update('salary', `${event.target.value} ${salary.amount}`.trim())}
+                    sx={{ mr: 1, minWidth: 40 }}
+                    inputProps={{ 'aria-label': 'Currency' }}
+                  >
+                    {CURRENCIES.map((currency) => (
+                      <MenuItem key={currency} value={currency}>
+                        {currency}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </InputAdornment>
+              ),
+            },
           }}
         />
       </Stack>
@@ -159,32 +155,36 @@ export default function JobFormFields({
         freeSolo
         options={[]}
         value={form.tags}
-        onChange={(_, newValue: string[]) => {
-          // Robust tag splitting for comma-separated input
-          const last = newValue[newValue.length - 1]
-          if (last?.includes(',')) {
-            const split = last.split(',').map((s: string) => s.trim()).filter(Boolean)
-            const combined = [...newValue.slice(0, -1), ...split]
-            set('tags', Array.from(new Set(combined)))
-          } else {
-            set('tags', newValue as string[])
-          }
+        onChange={(_, value) => {
+          // Let a pasted "React, TypeScript" become two tags rather than one.
+          const expanded = value.flatMap((entry) =>
+            entry
+              .split(',')
+              .map((part) => part.trim())
+              .filter(Boolean)
+          )
+
+          update('tags', Array.from(new Set(expanded)))
         }}
-        renderTags={(value: string[], getTagProps: any) =>
-          value.map((option: string, index: number) => {
-            const { key, ...tagProps } = getTagProps({ index })
-            return <Chip key={key} variant="outlined" label={option} {...tagProps} />
+        renderValue={(value, getItemProps) =>
+          value.map((option, index) => {
+            const { key, ...itemProps } = getItemProps({ index })
+            return <Chip key={key} variant="outlined" label={option} {...itemProps} />
           })
         }
-        renderInput={(params: any) => (
-          <TextField {...params} label="Tags / Skills" placeholder="Add tag (separate by comma or press Enter)..." />
+        renderInput={(params) => (
+          <TextField
+            {...params}
+            label="Tags / skills"
+            placeholder="Add a tag, separated by commas or Enter…"
+          />
         )}
       />
 
       <TextField
-        label="Job Description"
+        label="Job description"
         value={form.description}
-        onChange={(e) => set('description', e.target.value)}
+        onChange={(event) => update('description', event.target.value)}
         multiline
         minRows={8}
         fullWidth

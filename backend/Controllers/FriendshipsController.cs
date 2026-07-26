@@ -13,10 +13,17 @@ namespace findajob.Controllers;
 [Authorize]
 public class FriendshipsController : ControllerBase
 {
+    private const string StatusPending = "Pending";
+    private const string StatusAccepted = "Accepted";
+    private const string StatusRejected = "Rejected";
+
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    public FriendshipsController(ApplicationDbContext context, UserManager<ApplicationUser> userManager)
+    public FriendshipsController(
+        ApplicationDbContext context,
+        UserManager<ApplicationUser> userManager
+    )
     {
         _context = context;
         _userManager = userManager;
@@ -26,65 +33,98 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> GetFriends()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var friendIds = await _context.Friendships
-            .Where(f => f.UserId == userId)
+        var friendIds = await _context
+            .Friendships.Where(f => f.UserId == userId)
             .Select(f => f.FriendId)
             .ToListAsync();
 
-        var blockedByMe = await _context.BlockedUsers
-            .Where(b => b.BlockerId == userId)
+        var blockedByMe = await _context
+            .BlockedUsers.Where(b => b.BlockerId == userId)
             .Select(b => b.BlockedId)
             .ToListAsync();
 
-        var users = await _userManager.Users
+        var friends = await _userManager
+            .Users.AsNoTracking()
             .Where(u => friendIds.Contains(u.Id))
             .Select(u => new
             {
                 u.Id,
                 u.FirstName,
                 u.LastName,
-                u.Email,
                 u.CompanyName,
                 u.ProfessionalTitle,
-                IsBlocked = blockedByMe.Contains(u.Id)
             })
             .ToListAsync();
 
-        return Ok(users);
+        return Ok(
+            friends.Select(f => new
+            {
+                f.Id,
+                f.FirstName,
+                f.LastName,
+                f.CompanyName,
+                f.ProfessionalTitle,
+                IsBlocked = blockedByMe.Contains(f.Id),
+            })
+        );
     }
 
     [HttpGet("requests")]
     public async Task<IActionResult> GetRequests()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var requests = await _context.FriendRequests
-            .Where(r => (r.ReceiverId == userId || r.SenderId == userId) && r.Status == "Pending")
+        var requests = await _context
+            .FriendRequests.AsNoTracking()
+            .Where(r => (r.ReceiverId == userId || r.SenderId == userId) && r.Status == StatusPending)
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync();
 
-        var otherUserIds = requests.Select(r => r.SenderId == userId ? r.ReceiverId : r.SenderId).Distinct().ToList();
-        var others = await _userManager.Users
-            .Where(u => otherUserIds.Contains(u.Id))
+        var otherIds = requests
+            .Select(r => r.SenderId == userId ? r.ReceiverId : r.SenderId)
+            .Distinct()
+            .ToList();
+
+        var others = await _userManager
+            .Users.AsNoTracking()
+            .Where(u => otherIds.Contains(u.Id))
+            .Select(u => new
+            {
+                u.Id,
+                u.FirstName,
+                u.LastName,
+                u.CompanyName,
+                u.ProfessionalTitle,
+            })
             .ToListAsync();
 
-        var result = requests.Select(r =>
+        var result = requests.Select(request =>
         {
-            var isOutgoing = r.SenderId == userId;
-            var otherId = isOutgoing ? r.ReceiverId : r.SenderId;
-            var s = others.FirstOrDefault(u => u.Id == otherId);
+            var isOutgoing = request.SenderId == userId;
+            var otherId = isOutgoing ? request.ReceiverId : request.SenderId;
+            var other = others.FirstOrDefault(u => u.Id == otherId);
+
             return new
             {
-                r.Id,
-                r.SenderId,
-                r.ReceiverId,
-                r.CreatedAt,
+                request.Id,
+                request.SenderId,
+                request.ReceiverId,
+                request.CreatedAt,
                 IsOutgoing = isOutgoing,
-                OtherName = s != null ? $"{s.FirstName} {s.LastName}".Trim() : "Unknown",
-                OtherTitle = s?.ProfessionalTitle ?? s?.CompanyName
+                OtherUserId = otherId,
+                OtherName = other is null
+                    ? "Unknown user"
+                    : $"{other.FirstName} {other.LastName}".Trim(),
+                OtherTitle = other?.ProfessionalTitle ?? other?.CompanyName ?? "",
             };
         });
 
@@ -95,32 +135,78 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> SendRequest(string receiverId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
-
-        if (userId == receiverId) return BadRequest(new { message = "You cannot add yourself as a friend." });
-
-        var alreadyFriends = await _context.Friendships.AnyAsync(f => f.UserId == userId && f.FriendId == receiverId);
-        if (alreadyFriends) return BadRequest(new { message = "You are already friends." });
-
-        var existing = await _context.FriendRequests.FirstOrDefaultAsync(r =>
-            r.SenderId == userId && r.ReceiverId == receiverId && r.Status == "Pending");
-
-        if (existing != null) return Ok(new { message = "Request already sent." });
-
-        var request = new FriendRequest { SenderId = userId, ReceiverId = receiverId };
-        _context.FriendRequests.Add(request);
-
-        _context.Notifications.Add(new Notification
+        if (string.IsNullOrEmpty(userId))
         {
-            UserId = receiverId,
-            Title = "New friend request",
-            Message = "Someone wants to connect with you.",
-            Type = "FriendRequest",
-            LinkUrl = "/employee", // Or employer
-            CreatedAt = DateTime.UtcNow
-        });
+            return Unauthorized();
+        }
+
+        if (userId == receiverId)
+        {
+            return BadRequest(new { message = "You cannot add yourself as a friend." });
+        }
+
+        // The recipient's existence was never checked, so a request could be created
+        // against any id at all.
+        if (await _userManager.FindByIdAsync(receiverId) is null)
+        {
+            return NotFound(new { message = "User not found." });
+        }
+
+        var isBlocked = await _context.BlockedUsers.AnyAsync(b =>
+            (b.BlockerId == receiverId && b.BlockedId == userId)
+            || (b.BlockerId == userId && b.BlockedId == receiverId)
+        );
+
+        if (isBlocked)
+        {
+            return BadRequest(new { message = "You cannot send a request to this user." });
+        }
+
+        if (await _context.Friendships.AnyAsync(f => f.UserId == userId && f.FriendId == receiverId))
+        {
+            return BadRequest(new { message = "You are already friends." });
+        }
+
+        // Checking only the outgoing direction meant A and B could each hold a pending
+        // request against the other, leaving two rows for one relationship.
+        var existing = await _context.FriendRequests.FirstOrDefaultAsync(r =>
+            r.Status == StatusPending
+            && (
+                (r.SenderId == userId && r.ReceiverId == receiverId)
+                || (r.SenderId == receiverId && r.ReceiverId == userId)
+            )
+        );
+
+        if (existing is not null)
+        {
+            return Ok(new
+            {
+                message = existing.SenderId == userId
+                    ? "Request already sent."
+                    : "This user has already sent you a request.",
+            });
+        }
+
+        _context.FriendRequests.Add(
+            new FriendRequest { SenderId = userId, ReceiverId = receiverId }
+        );
+
+        var sender = await _userManager.FindByIdAsync(userId);
+
+        _context.Notifications.Add(
+            new Notification
+            {
+                UserId = receiverId,
+                Title = "New connection request",
+                Message = $"{DisplayName(sender)} would like to connect with you.",
+                Type = NotificationTypes.FriendRequest,
+                LinkUrl = await ConnectionsLinkForAsync(receiverId),
+                CreatedAt = DateTime.UtcNow,
+            }
+        );
 
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "Friend request sent." });
     }
 
@@ -128,36 +214,45 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> AcceptRequest(int id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        var request = await _context.FriendRequests.FindAsync(id);
-
-        if (request == null || request.ReceiverId != userId) return NotFound();
-        if (request.SenderId == userId) return BadRequest(new { message = "You cannot add yourself as a friend." });
-
-        var alreadyFriends = await _context.Friendships.AnyAsync(f => f.UserId == userId && f.FriendId == request.SenderId);
-        if (alreadyFriends)
+        if (string.IsNullOrEmpty(userId))
         {
-            request.Status = "Accepted";
-            await _context.SaveChangesAsync();
-            return Ok(new { message = "You are already friends." });
+            return Unauthorized();
         }
 
-        request.Status = "Accepted";
-
-        // Create bidirectional friendship
-        _context.Friendships.Add(new Friendship { UserId = userId, FriendId = request.SenderId });
-        _context.Friendships.Add(new Friendship { UserId = request.SenderId, FriendId = userId });
-
-        _context.Notifications.Add(new Notification
+        var request = await _context.FriendRequests.FindAsync(id);
+        if (request is null || request.ReceiverId != userId || request.Status != StatusPending)
         {
-            UserId = request.SenderId,
-            Title = "Friend request accepted",
-            Message = "You have a new connection!",
-            Type = "FriendRequest",
-            LinkUrl = "/employee",
-            CreatedAt = DateTime.UtcNow
-        });
+            return NotFound();
+        }
+
+        request.Status = StatusAccepted;
+
+        var alreadyFriends = await _context.Friendships.AnyAsync(f =>
+            f.UserId == userId && f.FriendId == request.SenderId
+        );
+
+        if (!alreadyFriends)
+        {
+            _context.Friendships.Add(new Friendship { UserId = userId, FriendId = request.SenderId });
+            _context.Friendships.Add(new Friendship { UserId = request.SenderId, FriendId = userId });
+        }
+
+        var accepter = await _userManager.FindByIdAsync(userId);
+
+        _context.Notifications.Add(
+            new Notification
+            {
+                UserId = request.SenderId,
+                Title = "Connection accepted",
+                Message = $"{DisplayName(accepter)} accepted your connection request.",
+                Type = NotificationTypes.FriendRequest,
+                LinkUrl = await ConnectionsLinkForAsync(request.SenderId),
+                CreatedAt = DateTime.UtcNow,
+            }
+        );
 
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "Friend request accepted." });
     }
 
@@ -167,10 +262,14 @@ public class FriendshipsController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var request = await _context.FriendRequests.FindAsync(id);
 
-        if (request == null || request.ReceiverId != userId) return NotFound();
+        if (request is null || request.ReceiverId != userId)
+        {
+            return NotFound();
+        }
 
-        request.Status = "Rejected";
+        request.Status = StatusRejected;
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "Friend request rejected." });
     }
 
@@ -180,11 +279,14 @@ public class FriendshipsController : ControllerBase
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         var request = await _context.FriendRequests.FindAsync(id);
 
-        if (request == null || (request.SenderId != userId && request.ReceiverId != userId))
+        if (request is null || (request.SenderId != userId && request.ReceiverId != userId))
+        {
             return NotFound();
+        }
 
         _context.FriendRequests.Remove(request);
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "Request removed." });
     }
 
@@ -192,15 +294,32 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> RemoveFriend(string friendId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var fs1 = await _context.Friendships.FirstOrDefaultAsync(f => f.UserId == userId && f.FriendId == friendId);
-        var fs2 = await _context.Friendships.FirstOrDefaultAsync(f => f.UserId == friendId && f.FriendId == userId);
+        var links = await _context
+            .Friendships.Where(f =>
+                (f.UserId == userId && f.FriendId == friendId)
+                || (f.UserId == friendId && f.FriendId == userId)
+            )
+            .ToListAsync();
 
-        if (fs1 != null) _context.Friendships.Remove(fs1);
-        if (fs2 != null) _context.Friendships.Remove(fs2);
+        _context.Friendships.RemoveRange(links);
+
+        // Clearing the settled request lets either side connect again later.
+        var requests = await _context
+            .FriendRequests.Where(r =>
+                (r.SenderId == userId && r.ReceiverId == friendId)
+                || (r.SenderId == friendId && r.ReceiverId == userId)
+            )
+            .ToListAsync();
+
+        _context.FriendRequests.RemoveRange(requests);
 
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "Friend removed." });
     }
 
@@ -208,12 +327,64 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> GetFriendshipStatus(string otherUserId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var isFriend = await _context.Friendships.AnyAsync(f => f.UserId == userId && f.FriendId == otherUserId);
-        var requestSent = await _context.FriendRequests.AnyAsync(r => r.SenderId == userId && r.ReceiverId == otherUserId && r.Status == "Pending");
-        var requestReceived = await _context.FriendRequests.AnyAsync(r => r.SenderId == otherUserId && r.ReceiverId == userId && r.Status == "Pending");
+        var incoming = await _context.FriendRequests.FirstOrDefaultAsync(r =>
+            r.SenderId == otherUserId && r.ReceiverId == userId && r.Status == StatusPending
+        );
 
-        return Ok(new { isFriend, requestSent, requestReceived });
+        return Ok(new
+        {
+            isFriend = await _context.Friendships.AnyAsync(f =>
+                f.UserId == userId && f.FriendId == otherUserId
+            ),
+            requestSent = await _context.FriendRequests.AnyAsync(r =>
+                r.SenderId == userId && r.ReceiverId == otherUserId && r.Status == StatusPending
+            ),
+            requestReceived = incoming is not null,
+            // Returned so the UI can accept directly instead of re-fetching the whole list.
+            incomingRequestId = incoming?.Id,
+        });
+    }
+
+    /// <summary>
+    /// Connection notifications used to link to <c>/employee</c> for everyone, which
+    /// sent employers to a dashboard they have no access to.
+    /// </summary>
+    private async Task<string> ConnectionsLinkForAsync(string userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+        {
+            return "/";
+        }
+
+        var roles = await _userManager.GetRolesAsync(user);
+
+        if (roles.Contains(Roles.Employer))
+        {
+            return "/employer";
+        }
+
+        return roles.Contains(Roles.Admin) ? "/admin" : "/employee";
+    }
+
+    private static string DisplayName(ApplicationUser? user)
+    {
+        if (user is null)
+        {
+            return "Someone";
+        }
+
+        var name = $"{user.FirstName} {user.LastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            return name;
+        }
+
+        return string.IsNullOrWhiteSpace(user.CompanyName) ? "Someone" : user.CompanyName;
     }
 }

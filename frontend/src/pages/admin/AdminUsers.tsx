@@ -1,207 +1,275 @@
-import { useEffect, useState } from 'react'
-import { api } from '../../api'
+import { useCallback, useEffect, useState } from 'react'
+import { api, errorMessage } from '../../api'
+import { useToast } from '../../toast'
+import { useConfirm } from '../../confirm'
+import ProfileDialog from '../../components/ProfileDialog'
+import { fullName } from '../../utils'
+import type { AdminUser, Role } from '../../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import Checkbox from '@mui/material/Checkbox'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
-type AdminUser = {
-  id: string
-  email: string
-  firstName: string
-  lastName: string
-  companyName?: string | null
-  professionalTitle?: string | null
-  roles: string[]
-  isDisabled: boolean
+const ALL_ROLES: Role[] = ['Admin', 'Employer', 'Employee']
+
+type Props = {
+  onChanged?: () => void | Promise<void>
 }
 
-const ALL_ROLES = ['Admin', 'Employer', 'Employee'] as const
+export default function AdminUsers({ onChanged }: Props) {
+  const { showSuccess, showError } = useToast()
+  const confirm = useConfirm()
 
-export default function AdminUsers({ onChanged }: { onChanged?: () => void | Promise<void> }) {
   const [users, setUsers] = useState<AdminUser[]>([])
-  const [open, setOpen] = useState(false)
-  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
-  const [selectedRoles, setSelectedRoles] = useState<string[]>([])
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '' })
-  const [isSaving, setIsSaving] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<AdminUser | null>(null)
+  const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
+  const [form, setForm] = useState({ firstName: '', lastName: '', email: '' })
+  const [saving, setSaving] = useState(false)
+  const [viewingProfileOf, setViewingProfileOf] = useState<string | null>(null)
 
-  const load = async () => {
-    const res = await api.get('/admin/users')
-    setUsers(res.data)
-  }
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const response = await api.get<AdminUser[]>('/admin/users')
+      setUsers(response.data)
+    } catch (error) {
+      showError(errorMessage(error, 'Could not load users.'))
+    } finally {
+      setLoading(false)
+    }
+  }, [showError])
 
   useEffect(() => {
     void load()
-  }, [])
+  }, [load])
 
-  const openEdit = (u: AdminUser) => {
-    setSelectedUser(u)
-    setSelectedRoles(u.roles ?? [])
-    setEditForm({
-      firstName: u.firstName || '',
-      lastName: u.lastName || '',
-      email: u.email || ''
+  const openEdit = (user: AdminUser) => {
+    setEditing(user)
+    setSelectedRoles(user.roles ?? [])
+    setForm({
+      firstName: user.firstName || '',
+      lastName: user.lastName || '',
+      email: user.email || '',
     })
-    setOpen(true)
   }
 
-  const toggleRole = (role: string) => {
-    setSelectedRoles(prev => (prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]))
+  const toggleRole = (role: Role) => {
+    setSelectedRoles((previous) =>
+      previous.includes(role) ? previous.filter((r) => r !== role) : [...previous, role]
+    )
   }
 
-  const saveUser = async () => {
-    if (!selectedUser) return
-    setIsSaving(true)
+  const save = async () => {
+    if (!editing) return
+
+    setSaving(true)
     try {
-      // Save roles
-      await api.put(`/admin/users/${selectedUser.id}/roles`, { roles: selectedRoles })
-      
-      // Save basic info - Assuming an endpoint exists or we use profiles/update-like logic
-      // For now, let's at least ensure roles are saved and we try to save names if supported
-      await api.put(`/admin/users/${selectedUser.id}`, {
-        firstName: editForm.firstName,
-        lastName: editForm.lastName,
-        email: editForm.email
-      })
+      await api.put(`/admin/users/${editing.id}`, form)
+      await api.put(`/admin/users/${editing.id}/roles`, { roles: selectedRoles })
 
-      setOpen(false)
+      setEditing(null)
       await load()
-      await Promise.resolve(onChanged?.())
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Save failed.')
+      await onChanged?.()
+      showSuccess('User updated.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not save this user.'))
     } finally {
-      setIsSaving(false)
+      setSaving(false)
     }
   }
 
-  const toggleDisable = async (u: AdminUser) => {
-    await api.put(`/admin/users/${u.id}/status`, { disabled: !u.isDisabled })
-    await load()
-    await Promise.resolve(onChanged?.())
+  const toggleDisabled = async (user: AdminUser) => {
+    try {
+      await api.put(`/admin/users/${user.id}/status`, { disabled: !user.isDisabled })
+      await load()
+      await onChanged?.()
+      showSuccess(user.isDisabled ? 'User enabled.' : 'User disabled.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not change the account status.'))
+    }
   }
 
-  const deleteUser = async (id: string) => {
-    const ok = window.confirm('Delete this user permanently? This cannot be undone.')
-    if (!ok) return
+  const remove = async (user: AdminUser) => {
+    const confirmed = await confirm({
+      title: 'Delete this user?',
+      description: `${user.email} and all of their applications, messages and uploads will be permanently removed. This cannot be undone.`,
+      confirmLabel: 'Delete permanently',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
     try {
-      await api.delete(`/admin/users/${id}`)
+      await api.delete(`/admin/users/${user.id}`)
       await load()
-      await Promise.resolve(onChanged?.())
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Delete failed.')
+      await onChanged?.()
+      showSuccess('User deleted.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not delete this user.'))
     }
   }
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>Users</Typography>
+      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>
+        Users
+      </Typography>
 
       <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Email</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Name</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company / Title</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Roles</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 260 }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {users.map(u => (
-              <TableRow key={u.id} hover>
-                <TableCell sx={{ fontWeight: 800 }}>
-                  {u.email} {u.isDisabled ? <Chip size="small" label="Disabled" sx={{ ml: 1 }} /> : null}
-                </TableCell>
-                <TableCell>{(u.firstName || '') + ' ' + (u.lastName || '')}</TableCell>
-                <TableCell>{u.companyName ? u.companyName : u.professionalTitle ? u.professionalTitle : '-'}</TableCell>
-                <TableCell>
-                  <Stack direction="row" spacing={1} flexWrap="wrap">
-                    {(u.roles ?? []).map(r => (
-                      <Chip key={r} size="small" label={r} variant="outlined" />
-                    ))}
-                  </Stack>
-                </TableCell>
-                <TableCell>
-                  <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="outlined" color="error" onClick={() => void deleteUser(u.id)}>Delete</Button>
-                    <Button size="small" variant="outlined" onClick={() => openEdit(u)}>Edit</Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      color={u.isDisabled ? 'success' : 'warning'}
-                      onClick={() => void toggleDisable(u)}
-                    >
-                      {u.isDisabled ? 'Enable' : 'Disable'}
-                    </Button>
-                  </Stack>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Email</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Name</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company / title</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Roles</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 340 }}>
+                  Actions
                 </TableCell>
               </TableRow>
-            ))}
-            {users.length === 0 ? (
-              <TableRow><TableCell colSpan={5}>No users found.</TableCell></TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+            </TableHead>
+
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={5} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              ) : users.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
+                    No users found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                users.map((user) => (
+                  <TableRow key={user.id} hover>
+                    <TableCell sx={{ fontWeight: 800 }}>
+                      {user.email}
+                      {user.isDisabled ? (
+                        <Chip size="small" label="Disabled" color="warning" sx={{ ml: 1 }} />
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{fullName(user.firstName, user.lastName) || '—'}</TableCell>
+                    <TableCell>{user.companyName || user.professionalTitle || '—'}</TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                        {(user.roles ?? []).map((role) => (
+                          <Chip key={role} size="small" label={role} variant="outlined" />
+                        ))}
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1}>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => setViewingProfileOf(user.id)}
+                        >
+                          Profile
+                        </Button>
+                        <Button size="small" variant="outlined" onClick={() => openEdit(user)}>
+                          Edit
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color={user.isDisabled ? 'success' : 'warning'}
+                          onClick={() => void toggleDisabled(user)}
+                        >
+                          {user.isDisabled ? 'Enable' : 'Disable'}
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => void remove(user)}
+                        >
+                          Delete
+                        </Button>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </Paper>
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+      <ProfileDialog userId={viewingProfileOf} onClose={() => setViewingProfileOf(null)} />
+
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>
-          Edit User {selectedUser ? `— ${selectedUser.email}` : ''}
+          Edit user{editing ? ` — ${editing.email}` : ''}
         </DialogTitle>
-        <DialogContent>
-          <Stack spacing={2} sx={{ mt: 1 }}>
+        <DialogContent dividers>
+          <Stack spacing={2.5} sx={{ mt: 1 }}>
             <TextField
-              label="First Name"
-              value={editForm.firstName}
-              onChange={(e) => setEditForm({ ...editForm, firstName: e.target.value })}
+              label="First name"
+              value={form.firstName}
+              onChange={(event) => setForm({ ...form, firstName: event.target.value })}
               fullWidth
             />
             <TextField
-              label="Last Name"
-              value={editForm.lastName}
-              onChange={(e) => setEditForm({ ...editForm, lastName: e.target.value })}
+              label="Last name"
+              value={form.lastName}
+              onChange={(event) => setForm({ ...form, lastName: event.target.value })}
               fullWidth
             />
             <TextField
               label="Email"
-              value={editForm.email}
-              onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+              type="email"
+              value={form.email}
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+              helperText="Changing this also changes the username used to sign in."
               fullWidth
             />
 
-            <Typography sx={{ fontWeight: 800, mt: 1 }}>Roles</Typography>
             <Box>
-              {ALL_ROLES.map(r => (
+              <Typography sx={{ fontWeight: 800, mb: 0.5 }}>Roles</Typography>
+              {ALL_ROLES.map((role) => (
                 <FormControlLabel
-                  key={r}
-                  control={<Checkbox checked={selectedRoles.includes(r)} onChange={() => toggleRole(r)} />}
-                  label={r}
+                  key={role}
+                  control={
+                    <Checkbox
+                      checked={selectedRoles.includes(role)}
+                      onChange={() => toggleRole(role)}
+                    />
+                  }
+                  label={role}
                 />
               ))}
             </Box>
           </Stack>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={isSaving} onClick={() => void saveUser()}>
-            {isSaving ? 'Saving...' : 'Save'}
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setEditing(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={saving || selectedRoles.length === 0}
+            onClick={() => void save()}
+            sx={{ fontWeight: 800, px: 3 }}
+          >
+            {saving ? 'Saving…' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>

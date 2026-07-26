@@ -1,5 +1,11 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { useCallback, useEffect, useState } from 'react'
+import { api, errorMessage } from '../api'
+import { useToast } from '../toast'
+import AdminJobs from './admin/AdminJobs'
+import AdminUsers from './admin/AdminUsers'
+import AdminApplications from './admin/AdminApplications'
+import AdminRegistrations from './admin/AdminRegistrations'
+import type { AdminStats } from '../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Card from '@mui/material/Card'
@@ -10,72 +16,62 @@ import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 
-import AdminJobs from './admin/AdminJobs'
-import AdminUsers from './admin/AdminUsers'
-import AdminApplications from './admin/AdminApplications'
-import AdminRegistrations from './admin/AdminRegistrations'
-
-type AdminStats = {
-  totalUsers: number
-  totalJobs: number
-  activeJobs: number
-  deletedJobs: number
-  totalApplications: number
-  employers: number
-  employees: number
-  admins: number
-}
-
 export default function Admin() {
+  const { showError } = useToast()
+
   const [tab, setTab] = useState(0)
   const [stats, setStats] = useState<AdminStats | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
-  const loadStats = async () => {
-    const res = await api.get('/admin/stats')
-    setStats(res.data)
-  }
+  const loadStats = useCallback(async () => {
+    try {
+      const response = await api.get<AdminStats>('/admin/stats')
+      setStats(response.data)
+    } catch (error) {
+      showError(errorMessage(error, 'Could not load statistics.'))
+    }
+  }, [showError])
 
-  const refreshAll = async () => {
+  const refreshAll = useCallback(async () => {
     await loadStats()
-    setRefreshKey((prev) => prev + 1)
-  }
+    setRefreshKey((previous) => previous + 1)
+  }, [loadStats])
 
   useEffect(() => {
     void loadStats()
-  }, [])
+  }, [loadStats])
 
-  const statCards = stats
+  const statCards: [string, number][] = stats
     ? [
-        ['Total users', stats.totalUsers ?? 0],
-        ['Total jobs', stats.totalJobs ?? 0],
-        ['Active jobs', stats.activeJobs ?? 0],
-        ['Applications', stats.totalApplications ?? 0],
-        ['Employers', stats.employers ?? 0],
-        ['Employees', stats.employees ?? 0],
-        ['Admins', stats.admins ?? 0],
-        ['Deleted jobs', stats.deletedJobs ?? 0],
+        ['Total users', stats.totalUsers],
+        ['Total jobs', stats.totalJobs],
+        ['Active jobs', stats.activeJobs],
+        ['Applications', stats.totalApplications],
+        ['Employers', stats.employers],
+        ['Job seekers', stats.employees],
+        ['Admins', stats.admins],
+        ['Archived jobs', stats.deletedJobs],
       ]
     : []
 
   return (
     <Box>
-      <Typography variant="h3" sx={{ fontWeight: 900, mb: 2 }}>
-        Admin Terminal
+      <Typography
+        variant="h3"
+        sx={{ fontWeight: 900, mb: 3, fontSize: { xs: '2rem', md: '3rem' } }}
+      >
+        Administration
       </Typography>
 
       <Grid container spacing={2} sx={{ mb: 3 }}>
         {stats ? (
           statCards.map(([label, value]) => (
-            <Grid key={String(label)} size={{ xs: 12, sm: 6, md: 3 }}>
-              <Card sx={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+            <Grid key={label} size={{ xs: 6, sm: 4, md: 3 }}>
+              <Card sx={{ border: '1px solid rgba(255,255,255,0.08)', height: '100%' }}>
                 <CardContent>
-                  <Typography sx={{ opacity: 0.75 }}>{label}</Typography>
-                  <Typography
-                    variant="h4"
-                    sx={{ fontWeight: 900, color: 'primary.main', mt: 1 }}
-                  >
-                    {String(value ?? 0)}
+                  <Typography sx={{ opacity: 0.75, fontSize: '0.9rem' }}>{label}</Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 900, color: 'primary.main', mt: 1 }}>
+                    {value}
                   </Typography>
                 </CardContent>
               </Card>
@@ -83,49 +79,42 @@ export default function Admin() {
           ))
         ) : (
           <Grid size={12}>
-            <Typography sx={{ opacity: 0.5 }}>Loading stats...</Typography>
+            <Typography sx={{ opacity: 0.5 }}>Loading statistics…</Typography>
           </Grid>
         )}
       </Grid>
 
       <Stack
-        direction="row"
+        direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
-        alignItems="center"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        spacing={2}
         sx={{ mb: 2 }}
       >
-        <Tabs value={tab} onChange={(_, v) => setTab(v)}>
-          <Tab label="Jobs" />
-          <Tab label="Users" />
-          <Tab label="Applications" />
-          <Tab label="Registrations" />
+        <Tabs
+          value={tab}
+          onChange={(_, value) => setTab(value)}
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab label="Jobs" sx={{ fontWeight: 700 }} />
+          <Tab label="Users" sx={{ fontWeight: 700 }} />
+          <Tab label="Applications" sx={{ fontWeight: 700 }} />
+          <Tab label="Registrations" sx={{ fontWeight: 700 }} />
         </Tabs>
 
-        <Button variant="outlined" onClick={() => void refreshAll()}>
+        <Button variant="outlined" onClick={() => void refreshAll()} sx={{ flexShrink: 0 }}>
           Refresh
         </Button>
       </Stack>
 
-      {tab === 0 ? (
-        <AdminJobs key={`admin-jobs-${refreshKey}`} onChanged={refreshAll} />
-      ) : null}
-
-      {tab === 1 ? (
-        <AdminUsers key={`admin-users-${refreshKey}`} onChanged={refreshAll} />
-      ) : null}
-
+      {tab === 0 ? <AdminJobs key={`jobs-${refreshKey}`} onChanged={refreshAll} /> : null}
+      {tab === 1 ? <AdminUsers key={`users-${refreshKey}`} onChanged={refreshAll} /> : null}
       {tab === 2 ? (
-        <AdminApplications
-          key={`admin-applications-${refreshKey}`}
-          onChanged={refreshAll}
-        />
+        <AdminApplications key={`applications-${refreshKey}`} onChanged={refreshAll} />
       ) : null}
-
       {tab === 3 ? (
-        <AdminRegistrations
-          key={`admin-registrations-${refreshKey}`}
-          onChanged={refreshAll}
-        />
+        <AdminRegistrations key={`registrations-${refreshKey}`} onChanged={refreshAll} />
       ) : null}
     </Box>
   )

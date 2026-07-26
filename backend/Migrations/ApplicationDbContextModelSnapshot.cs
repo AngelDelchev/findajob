@@ -15,7 +15,7 @@ namespace findajob.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.2");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
@@ -324,6 +324,8 @@ namespace findajob.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("UserId");
+
                     b.ToTable("Educations");
                 });
 
@@ -360,6 +362,8 @@ namespace findajob.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("Experiences");
                 });
@@ -464,7 +468,8 @@ namespace findajob.Migrations
 
                     b.HasIndex("JobId");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "JobId")
+                        .IsUnique();
 
                     b.ToTable("JobApplications");
                 });
@@ -545,6 +550,8 @@ namespace findajob.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt");
+
                     b.HasIndex("OwnerId");
 
                     b.HasIndex("Title");
@@ -582,7 +589,14 @@ namespace findajob.Migrations
 
                     b.Property<string>("Content")
                         .IsRequired()
+                        .HasMaxLength(5000)
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("DeletedByReceiver")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("DeletedBySender")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("IsRead")
                         .HasColumnType("INTEGER");
@@ -603,9 +617,12 @@ namespace findajob.Migrations
 
                     b.Property<string>("Subject")
                         .IsRequired()
+                        .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("SenderUserId", "ReceiverUserId", "SentAt");
 
                     b.ToTable("Messages");
                 });
@@ -644,7 +661,7 @@ namespace findajob.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "IsRead");
 
                     b.ToTable("Notifications");
                 });
@@ -766,6 +783,8 @@ namespace findajob.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("Skills");
                 });
@@ -940,6 +959,24 @@ namespace findajob.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("findajob.Models.Education", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.Experience", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("findajob.Models.FriendRequest", b =>
                 {
                     b.HasOne("findajob.Models.ApplicationUser", null)
@@ -1013,6 +1050,15 @@ namespace findajob.Migrations
                 });
 
             modelBuilder.Entity("findajob.Models.SavedJob", b =>
+                {
+                    b.HasOne("findajob.Models.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("findajob.Models.Skill", b =>
                 {
                     b.HasOne("findajob.Models.ApplicationUser", null)
                         .WithMany()

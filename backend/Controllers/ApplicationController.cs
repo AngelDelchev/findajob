@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using findajob.Data;
 using findajob.Models;
@@ -21,7 +22,7 @@ public class ApplicationController : ControllerBase
         _jobService = jobService;
     }
 
-    [Authorize(Roles = "Employee")]
+    [Authorize(Roles = Roles.Employee)]
     [HttpPost]
     public async Task<IActionResult> Submit([FromBody] SubmitApplicationRequest request)
     {
@@ -32,28 +33,61 @@ public class ApplicationController : ControllerBase
         }
 
         var job = await _jobService.GetJobByIdAsync(request.JobId);
-        if (job == null)
+        if (job is null)
         {
             return NotFound(new { message = "Job not found." });
+        }
+
+        if (job.Deadline is { } deadline && deadline < DateTime.UtcNow)
+        {
+            return BadRequest(new { message = "The deadline for this position has passed." });
+        }
+
+        // Nothing previously stopped the same person applying to a posting repeatedly.
+        var alreadyApplied = await _context.JobApplications.AnyAsync(a =>
+            a.UserId == userId && a.JobId == request.JobId
+        );
+
+        if (alreadyApplied)
+        {
+            return Conflict(new { message = "You have already applied for this position." });
         }
 
         var application = new JobApplication
         {
             UserId = userId,
             JobId = request.JobId,
-            ApplicantName = request.ApplicantName,
-            ApplicantEmail = request.ApplicantEmail,
-            Message = request.Message,
-            AppliedAt = DateTime.UtcNow,
+            ApplicantName = request.ApplicantName.Trim(),
+            ApplicantEmail = request.ApplicantEmail.Trim(),
+            Message = request.Message.Trim(),
             JobTitle = job.Title,
             CompanyName = job.Company,
+            Status = ApplicationStatus.Pending,
+            AppliedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow,
         };
 
-        await _jobService.SubmitApplicationAsync(application);
-        return Ok(new { message = "Application submitted successfully." });
+        _context.JobApplications.Add(application);
+
+        // Let the employer know without having to poll their dashboard.
+        _context.Notifications.Add(
+            new Notification
+            {
+                UserId = job.OwnerId,
+                Title = "New application",
+                Message = $"{application.ApplicantName} applied for '{job.Title}'.",
+                Type = NotificationTypes.Application,
+                LinkUrl = "/employer",
+                CreatedAt = DateTime.UtcNow,
+            }
+        );
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "Application submitted successfully.", application.Id });
     }
 
-    [Authorize(Roles = "Employee")]
+    [Authorize(Roles = Roles.Employee)]
     [HttpGet("mine")]
     public async Task<IActionResult> Mine()
     {
@@ -63,11 +97,10 @@ public class ApplicationController : ControllerBase
             return Unauthorized();
         }
 
-        var applications = await _jobService.GetApplicationsForUserAsync(userId);
-        return Ok(applications);
+        return Ok(await _jobService.GetApplicationsForUserAsync(userId));
     }
 
-    [Authorize(Roles = "Employer")]
+    [Authorize(Roles = Roles.Employer)]
     [HttpGet("employer")]
     public async Task<IActionResult> ForEmployer()
     {
@@ -77,52 +110,45 @@ public class ApplicationController : ControllerBase
             return Unauthorized();
         }
 
-        var applications = await _jobService.GetApplicationsForEmployerAsync(userId);
-        return Ok(applications);
+        return Ok(await _jobService.GetApplicationsForEmployerAsync(userId));
     }
 
-    public class SetStatusRequest
-    {
-        public string Status { get; set; } = "Pending";
-    }
-
-    [Authorize(Roles = "Employer,Admin")]
+    [Authorize(Roles = Roles.AdminOrEmployer)]
     [HttpPut("{id:int}/status")]
     public async Task<IActionResult> UpdateStatus(int id, [FromBody] SetStatusRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var app = await _context
-            .JobApplications.Include(a => a.Job)
-            .FirstOrDefaultAsync(a => a.Id == id);
-        if (app == null)
-            return NotFound(new { message = "Application not found." });
-
-        var isAdmin = User.IsInRole("Admin");
-        var job = app.Job ?? await _context.JobPostings.IgnoreQueryFilters().FirstOrDefaultAsync(j => j.Id == app.JobId);
-
-        if (!isAdmin && (job == null || job.OwnerId != userId))
-            return Forbid();
-
-        var allowed = new HashSet<string>(
-            new[] { "Applied", "Reviewed", "Interviewing", "Accepted", "Rejected" }
-        );
-        if (!allowed.Contains(request.Status))
+        if (!ApplicationStatus.IsValid(request.Status))
+        {
             return BadRequest(new { message = "Invalid status." });
+        }
 
-        app.Status = request.Status;
-        app.UpdatedAt = DateTime.UtcNow;
+        var application = await _context.JobApplications.FirstOrDefaultAsync(a => a.Id == id);
+        if (application is null)
+        {
+            return NotFound(new { message = "Application not found." });
+        }
+
+        if (!await CanManageAsync(application, userId))
+        {
+            return Forbid();
+        }
+
+        application.Status = request.Status;
+        application.UpdatedAt = DateTime.UtcNow;
 
         _context.Notifications.Add(
             new Notification
             {
-                UserId = app.UserId,
+                UserId = application.UserId,
                 Title = "Application update",
-                Message = $"Your application for '{app.JobTitle}' was updated to: {request.Status}",
-                Type = "Application",
-                IsRead = false,
+                Message = $"Your application for '{application.JobTitle}' was updated to: {request.Status}",
+                Type = NotificationTypes.Application,
                 LinkUrl = "/employee",
                 CreatedAt = DateTime.UtcNow,
             }
@@ -132,65 +158,112 @@ public class ApplicationController : ControllerBase
         return Ok(new { message = "Status updated." });
     }
 
-    [Authorize(Roles = "Employee,Admin")]
+    [Authorize(Roles = Roles.AdminOrEmployee)]
     [HttpDelete("{id:int}")]
     public async Task<IActionResult> Withdraw(int id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var app = await _context.JobApplications.FirstOrDefaultAsync(a => a.Id == id);
-        if (app == null)
+        var application = await _context.JobApplications.FirstOrDefaultAsync(a => a.Id == id);
+        if (application is null)
+        {
             return NotFound(new { message = "Application not found." });
+        }
 
-        var isAdmin = User.IsInRole("Admin");
-        if (!isAdmin && app.UserId != userId)
+        if (application.UserId != userId && !User.IsInRole(Roles.Admin))
+        {
             return Forbid();
+        }
 
-        _context.JobApplications.Remove(app);
+        _context.JobApplications.Remove(application);
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Application withdrawn." });
     }
 
-    [Authorize(Roles = "Employer,Admin")]
+    /// <summary>
+    /// Returns a link to the applicant's CV.
+    ///
+    /// The URL now points at the authorised <see cref="CvController"/> endpoint. It
+    /// used to be a direct path into <c>wwwroot</c>, which the static-file middleware
+    /// served to anybody, signed in or not.
+    /// </summary>
+    [Authorize(Roles = Roles.AdminOrEmployer)]
     [HttpGet("{id:int}/cv")]
     public async Task<IActionResult> GetCv(int id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var app = await _context.JobApplications.FirstOrDefaultAsync(a => a.Id == id);
-        if (app == null)
+        var application = await _context.JobApplications.FirstOrDefaultAsync(a => a.Id == id);
+        if (application is null)
+        {
             return NotFound(new { message = "Application not found." });
+        }
 
-        var isAdmin = User.IsInRole("Admin");
-        var job = await _context.JobPostings.IgnoreQueryFilters().FirstOrDefaultAsync(j => j.Id == app.JobId);
-
-        if (!isAdmin && (job == null || job.OwnerId != userId))
+        if (!await CanManageAsync(application, userId))
+        {
             return Forbid();
+        }
 
-        var cv = await _context.CvDocuments.FirstOrDefaultAsync(c => c.UserId == app.UserId);
-        if (cv == null)
-            return NotFound(new { message = "No CV found for this applicant." });
+        var cv = await _context
+            .CvDocuments.Where(c => c.UserId == application.UserId)
+            .OrderByDescending(c => c.IsPrimary)
+            .ThenByDescending(c => c.UploadedAt)
+            .FirstOrDefaultAsync();
 
-        return Ok(
-            new
-            {
-                cv.Id,
-                cv.FileName,
-                Url = $"/uploads/cvs/{cv.StoredFileName}",
-            }
-        );
+        if (cv is null)
+        {
+            return NotFound(new { message = "This applicant has not uploaded a CV." });
+        }
+
+        return Ok(new
+        {
+            cv.Id,
+            cv.FileName,
+            Url = $"/api/cv/{cv.Id}/content",
+        });
+    }
+
+    /// <summary>An administrator, or the employer who owns the posting.</summary>
+    private async Task<bool> CanManageAsync(JobApplication application, string userId)
+    {
+        if (User.IsInRole(Roles.Admin))
+        {
+            return true;
+        }
+
+        return await _context
+            .JobPostings.IgnoreQueryFilters()
+            .AnyAsync(j => j.Id == application.JobId && j.OwnerId == userId);
     }
 
     public class SubmitApplicationRequest
     {
         public int JobId { get; set; }
+
+        [Required]
+        [MaxLength(200)]
         public string ApplicantName { get; set; } = "";
+
+        [Required]
+        [EmailAddress]
+        [MaxLength(256)]
         public string ApplicantEmail { get; set; } = "";
+
+        [MaxLength(5000)]
         public string Message { get; set; } = "";
+    }
+
+    public class SetStatusRequest
+    {
+        public string Status { get; set; } = ApplicationStatus.Pending;
     }
 }

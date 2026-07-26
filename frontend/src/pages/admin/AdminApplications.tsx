@@ -1,161 +1,230 @@
-import { useEffect, useState } from 'react'
-import { api } from '../../api'
+import { useCallback, useEffect, useState } from 'react'
+import { api, errorMessage } from '../../api'
+import { useToast } from '../../toast'
+import { useConfirm } from '../../confirm'
+import { formatDate, formatDateTime } from '../../utils'
+import { APPLICATION_STATUSES } from '../../types'
+import type { ApplicationStatus, JobApplication } from '../../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Chip from '@mui/material/Chip'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
+import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
+import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
-import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 
-type AdminApp = {
-  id: number
-  userId: string
-  jobId: number
-  jobTitle: string
-  companyName: string
-  applicantName: string
-  applicantEmail: string
-  message: string
-  appliedAt: string
-  status?: string | null
+type Props = {
+  onChanged?: () => void | Promise<void>
 }
 
-export default function AdminApplications({ onChanged }: { onChanged?: () => void | Promise<void> }) {
-  const [apps, setApps] = useState<AdminApp[]>([])
-  const [open, setOpen] = useState(false)
-  const [selected, setSelected] = useState<AdminApp | null>(null)
+export default function AdminApplications({ onChanged }: Props) {
+  const { showSuccess, showError } = useToast()
+  const confirm = useConfirm()
 
-  // User Edit State
-  const [userEditOpen, setUserEditOpen] = useState(false)
-  const [userForm, setUserForm] = useState({ id: '', firstName: '', lastName: '', email: '' })
-  const [isSavingUser, setIsSavingUser] = useState(false)
+  const [applications, setApplications] = useState<JobApplication[]>([])
+  const [selected, setSelected] = useState<JobApplication | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const load = async () => {
-    const res = await api.get('/admin/applications')
-    setApps(res.data)
-  }
-
-  useEffect(() => { void load() }, [])
-
-  const view = (a: AdminApp) => {
-    setSelected(a)
-    setOpen(true)
-  }
-
-  const openEditUser = (a: AdminApp) => {
-    const [first, ...last] = (a.applicantName || '').split(' ')
-    setUserForm({
-      id: a.userId,
-      firstName: first || '',
-      lastName: last.join(' ') || '',
-      email: a.applicantEmail || ''
-    })
-    setUserEditOpen(true)
-  }
-
-  const saveUser = async () => {
-    setIsSavingUser(true)
+  const load = useCallback(async () => {
+    setLoading(true)
     try {
-      await api.put(`/admin/users/${userForm.id}`, {
-        firstName: userForm.firstName,
-        lastName: userForm.lastName,
-        email: userForm.email
-      })
-      setUserEditOpen(false)
-      await load()
-    } catch (e: any) {
-      alert(e?.response?.data?.message || 'Failed to save user.')
+      const response = await api.get<JobApplication[]>('/admin/applications')
+      setApplications(response.data)
+    } catch (error) {
+      showError(errorMessage(error, 'Could not load applications.'))
     } finally {
-      setIsSavingUser(false)
+      setLoading(false)
+    }
+  }, [showError])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const updateStatus = async (id: number, status: ApplicationStatus) => {
+    try {
+      await api.put(`/admin/applications/${id}/status`, { status })
+      await load()
+      await onChanged?.()
+      showSuccess('Status updated.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not update the status.'))
     }
   }
 
-  const remove = async (id: number) => {
-    const ok = window.confirm('Delete this application?')
-    if (!ok) return
-    await api.delete(`/admin/application/${id}`)
-    await load()
-    await Promise.resolve(onChanged?.())
+  const remove = async (application: JobApplication) => {
+    const confirmed = await confirm({
+      title: 'Delete this application?',
+      description: `${application.applicantName}'s application for "${application.jobTitle}" will be permanently removed.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
+    try {
+      // Note the plural: this used to call /admin/application/{id}, which does not
+      // exist, so deleting an application always failed with a 404.
+      await api.delete(`/admin/applications/${application.id}`)
+      await load()
+      await onChanged?.()
+      showSuccess('Application deleted.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not delete the application.'))
+    }
   }
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>Applications</Typography>
+      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>
+        Applications
+      </Typography>
 
       <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Job</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applicant</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Date</TableCell>
-              <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 280 }}>Actions</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {apps.map(a => (
-              <TableRow key={a.id} hover>
-                <TableCell sx={{ fontWeight: 900 }}>{a.jobTitle}</TableCell>
-                <TableCell>{a.companyName}</TableCell>
-                <TableCell>{a.applicantEmail}</TableCell>
-                <TableCell>{new Date(a.appliedAt).toLocaleDateString()}</TableCell>
-                <TableCell>
-                  <Stack direction="row" spacing={1}>
-                    <Button size="small" variant="outlined" onClick={() => view(a)}>View App</Button>
-                    <Button size="small" variant="outlined" onClick={() => openEditUser(a)}>Edit User</Button>
-                    <Button size="small" variant="outlined" color="error" onClick={() => void remove(a.id)}>Delete</Button>
-                  </Stack>
+        <TableContainer>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Job</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applicant</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Applied</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Status</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800, width: 200 }}>
+                  Actions
                 </TableCell>
               </TableRow>
-            ))}
-            {apps.length === 0 ? (
-              <TableRow><TableCell colSpan={5}>No applications found.</TableCell></TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
+            </TableHead>
+
+            <TableBody>
+              {loading ? (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
+                    Loading…
+                  </TableCell>
+                </TableRow>
+              ) : applications.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
+                    No applications found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                applications.map((application) => (
+                  <TableRow key={application.id} hover>
+                    <TableCell sx={{ fontWeight: 900 }}>{application.jobTitle}</TableCell>
+                    <TableCell>{application.companyName}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.25}>
+                        <Typography variant="body2" sx={{ fontWeight: 700 }}>
+                          {application.applicantName}
+                        </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.6 }}>
+                          {application.applicantEmail}
+                        </Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>{formatDate(application.appliedAt)}</TableCell>
+                    <TableCell>
+                      <Select
+                        size="small"
+                        value={application.status}
+                        onChange={(event) =>
+                          void updateStatus(application.id, event.target.value as ApplicationStatus)
+                        }
+                        sx={{ fontSize: '0.8rem', minWidth: 130 }}
+                        inputProps={{ 'aria-label': 'Application status' }}
+                      >
+                        {APPLICATION_STATUSES.map((status) => (
+                          <MenuItem key={status} value={status}>
+                            {status}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1}>
+                        <Button size="small" variant="outlined" onClick={() => setSelected(application)}>
+                          View
+                        </Button>
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          color="error"
+                          onClick={() => void remove(application)}
+                        >
+                          Delete
+                        </Button>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
       </Paper>
 
-      <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog open={selected !== null} onClose={() => setSelected(null)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>Application details</DialogTitle>
         <DialogContent dividers>
           {selected ? (
-            <Box sx={{ mt: 1 }}>
-              <Typography sx={{ fontWeight: 900 }}>{selected.jobTitle}</Typography>
-              <Typography sx={{ opacity: 0.8 }}>{selected.companyName}</Typography>
-              <Typography sx={{ mt: 2, opacity: 0.8 }}>
-                <b>{selected.applicantName}</b> — {selected.applicantEmail}
-              </Typography>
-              <Typography sx={{ mt: 2, whiteSpace: 'pre-wrap' }}>{selected.message}</Typography>
-            </Box>
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <Box>
+                <Typography sx={{ fontWeight: 900 }}>{selected.jobTitle}</Typography>
+                <Typography sx={{ opacity: 0.8 }}>{selected.companyName}</Typography>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800 }}>
+                  APPLICANT
+                </Typography>
+                <Typography>
+                  <b>{selected.applicantName}</b> — {selected.applicantEmail}
+                </Typography>
+              </Box>
+
+              <Stack direction="row" spacing={3}>
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800 }}>
+                    STATUS
+                  </Typography>
+                  <Box>
+                    <Chip size="small" label={selected.status} variant="outlined" color="primary" />
+                  </Box>
+                </Box>
+                <Box>
+                  <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800 }}>
+                    APPLIED
+                  </Typography>
+                  <Typography variant="body2">{formatDateTime(selected.appliedAt)}</Typography>
+                </Box>
+              </Stack>
+
+              <Box>
+                <Typography variant="caption" sx={{ opacity: 0.5, fontWeight: 800 }}>
+                  MESSAGE
+                </Typography>
+                <Typography sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
+                  {selected.message || 'No message was attached.'}
+                </Typography>
+              </Box>
+            </Stack>
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={userEditOpen} onClose={() => setUserEditOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900 }}>Edit User Details</DialogTitle>
-        <DialogContent dividers>
-          <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="First Name" value={userForm.firstName} onChange={(e) => setUserForm({...userForm, firstName: e.target.value})} fullWidth />
-            <TextField label="Last Name" value={userForm.lastName} onChange={(e) => setUserForm({...userForm, lastName: e.target.value})} fullWidth />
-            <TextField label="Email" value={userForm.email} onChange={(e) => setUserForm({...userForm, email: e.target.value})} fullWidth />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setUserEditOpen(false)}>Cancel</Button>
-          <Button variant="contained" disabled={isSavingUser} onClick={() => void saveUser()}>Save</Button>
+          <Button onClick={() => setSelected(null)}>Close</Button>
         </DialogActions>
       </Dialog>
     </Box>

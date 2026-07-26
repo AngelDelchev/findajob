@@ -1,196 +1,220 @@
-import { useEffect, useState } from 'react'
-import { api } from '../api'
+import { useCallback, useEffect, useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
+import { api, errorMessage } from '../api'
+import { useNotifications } from '../notifications'
+import { useToast } from '../toast'
+import { formatDateTime } from '../utils'
+import type { NotificationItem } from '../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
+import Divider from '@mui/material/Divider'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Typography from '@mui/material/Typography'
-import Divider from '@mui/material/Divider'
-import { useNotifications } from '../notifications'
-import { Link as RouterLink } from 'react-router-dom'
-
-type NotificationItem = {
-  id: number
-  title: string
-  message: string
-  type: string
-  isRead: boolean
-  linkUrl?: string | null
-  createdAt: string
-}
 
 export default function Notifications() {
+  const { decrementUnread, clearUnread, refreshUnread } = useNotifications()
+  const { showError } = useToast()
+
   const [items, setItems] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(true)
-  const { decrementUnread, clearUnread, refreshUnread } = useNotifications()
 
-  const load = async (silent = false) => {
-    if (!silent) setLoading(true)
-    try {
-      const res = await api.get('/notifications/mine')
-      const raw = res.data
-      
-      // Handle both raw arrays and common object wrappers
-      let list = Array.isArray(raw) 
-        ? raw 
-        : (raw?.items || raw?.notifications || raw?.results || raw?.data || [])
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true)
 
-      // Final fallback: search for any array field in the response object
-      if (!Array.isArray(list) || list.length === 0) {
-        const potentialList = Object.values(raw || {}).find(v => Array.isArray(v))
-        if (potentialList) list = potentialList as any[]
+      try {
+        // The endpoint returns a plain array. The previous version searched the
+        // response for "any field that happens to be an array" as a fallback, which
+        // hid real failures behind a guess.
+        const response = await api.get<NotificationItem[]>('/notifications/mine')
+        setItems(response.data)
+      } catch (error) {
+        if (!silent) showError(errorMessage(error, 'Could not load your notifications.'))
+      } finally {
+        if (!silent) setLoading(false)
       }
-        
-      setItems(Array.isArray(list) ? list : [])
-    } catch (e) {
-      console.error('Failed to load notifications:', e)
-    } finally {
-      if (!silent) setLoading(false)
-    }
-  }
+    },
+    [showError]
+  )
 
   useEffect(() => {
     void load()
     void refreshUnread()
-  }, [])
+  }, [load, refreshUnread])
 
-  const markRead = async (n: NotificationItem) => {
-    // Optimistic UI
-    setItems(prev => prev.map(item => item.id === n.id ? { ...item, isRead: true } : item))
-    if (!n.isRead) decrementUnread(1)
-    
+  const markRead = async (notification: NotificationItem) => {
+    setItems((previous) =>
+      previous.map((item) => (item.id === notification.id ? { ...item, isRead: true } : item))
+    )
+
+    if (!notification.isRead) decrementUnread(1)
+
     try {
-      await api.post(`/notifications/${n.id}/read`)
-    } catch (e) {
-      console.error('Failed to mark read:', e)
-      void load(true) // Revert on failure
+      await api.post(`/notifications/${notification.id}/read`)
+    } catch {
+      // Reload to undo the optimistic update if the server disagreed.
+      void load(true)
+      void refreshUnread()
     }
   }
 
-  const markAll = async () => {
-    // Optimistic UI
-    setItems(prev => prev.map(item => ({ ...item, isRead: true })))
+  const markAllRead = async () => {
+    setItems((previous) => previous.map((item) => ({ ...item, isRead: true })))
     clearUnread()
-    
+
     try {
       await api.post('/notifications/mark-all-read')
-    } catch (e) {
-      console.error('Failed to mark all read:', e)
-      void load(true) // Revert on failure
+    } catch {
+      void load(true)
+      void refreshUnread()
     }
   }
+
+  const unreadCount = items.filter((item) => !item.isRead).length
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 4 }}>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'flex-start', sm: 'center' }}
+        spacing={2}
+        sx={{ mb: 4 }}
+      >
         <Box>
-          <Typography variant="h3" sx={{ fontWeight: 900 }}>
+          <Typography variant="h3" sx={{ fontWeight: 900, fontSize: { xs: '2rem', md: '3rem' } }}>
             Notifications
           </Typography>
-          <Typography sx={{ opacity: 0.6 }}>Stay updated on your applications and messages</Typography>
+          <Typography sx={{ opacity: 0.6 }}>
+            {unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
+          </Typography>
         </Box>
-        <Button 
-          variant="outlined" 
-          disabled={items.length === 0 || items.every(i => i.isRead)} 
-          onClick={() => void markAll()}
+
+        <Button
+          variant="outlined"
+          disabled={unreadCount === 0}
+          onClick={() => void markAllRead()}
           sx={{ fontWeight: 800 }}
         >
           Mark all as read
         </Button>
       </Stack>
 
-      <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', backgroundColor: 'rgba(255,255,255,0.01)' }}>
+      <Paper
+        sx={{ border: '1px solid rgba(255,255,255,0.08)', backgroundColor: 'rgba(255,255,255,0.01)' }}
+      >
         {loading && items.length === 0 ? (
           <Box sx={{ p: 6, textAlign: 'center' }}>
-            <Typography sx={{ opacity: 0.5 }}>Fetching your notifications...</Typography>
+            <Typography sx={{ opacity: 0.5 }}>Loading…</Typography>
           </Box>
         ) : items.length === 0 ? (
           <Box sx={{ p: 8, textAlign: 'center' }}>
-            <Typography variant="h6" sx={{ opacity: 0.3, fontWeight: 900 }}>No notifications yet</Typography>
-            <Typography sx={{ opacity: 0.2 }}>We'll let you know when something happens!</Typography>
+            <Typography variant="h6" sx={{ opacity: 0.35, fontWeight: 900 }}>
+              No notifications yet
+            </Typography>
+            <Typography sx={{ opacity: 0.25 }}>
+              We will let you know when something happens.
+            </Typography>
           </Box>
         ) : (
-          <Box>
-            {items.map((n, idx) => (
-              <Box 
-                key={n.id} 
-                sx={{ 
-                  p: 3, 
-                  backgroundColor: n.isRead ? 'transparent' : 'rgba(0,229,255,0.03)',
+          items.map((notification, index) => (
+            <Box key={notification.id}>
+              <Box
+                sx={{
+                  p: 3,
+                  backgroundColor: notification.isRead ? 'transparent' : 'rgba(0,229,255,0.03)',
+                  borderLeft: '4px solid',
+                  borderLeftColor: notification.isRead ? 'transparent' : 'primary.main',
                   transition: 'background-color 0.3s',
-                  position: 'relative',
-                  borderLeft: n.isRead ? '4px solid transparent' : '4px solid',
-                  borderColor: 'primary.main'
                 }}
               >
-                <Stack direction="row" spacing={2} alignItems="flex-start" justifyContent="space-between">
-                  <Stack spacing={0.5} sx={{ flex: 1 }}>
-                    <Stack direction="row" spacing={1.5} alignItems="center">
-                      <Typography variant="h6" sx={{ fontWeight: 900, color: n.isRead ? 'inherit' : 'primary.main', fontSize: '1rem' }}>
-                        {n.title}
+                <Stack
+                  direction={{ xs: 'column', sm: 'row' }}
+                  spacing={2}
+                  alignItems={{ xs: 'flex-start', sm: 'flex-start' }}
+                  justifyContent="space-between"
+                >
+                  <Stack spacing={0.5} sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                      <Typography
+                        variant="h6"
+                        sx={{
+                          fontWeight: 900,
+                          fontSize: '1rem',
+                          color: notification.isRead ? 'inherit' : 'primary.main',
+                        }}
+                      >
+                        {notification.title}
                       </Typography>
-                      {n.type && (
-                        <Chip 
-                          size="small" 
-                          label={n.type} 
-                          variant="outlined" 
-                          sx={{ height: 20, fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 800 }} 
+
+                      {notification.type ? (
+                        <Chip
+                          size="small"
+                          label={notification.type}
+                          variant="outlined"
+                          sx={{
+                            height: 20,
+                            fontSize: '0.65rem',
+                            textTransform: 'uppercase',
+                            fontWeight: 800,
+                          }}
                         />
-                      )}
-                      {!n.isRead && (
-                        <Chip 
-                          size="small" 
-                          label="New" 
-                          color="primary" 
-                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900 }} 
+                      ) : null}
+
+                      {!notification.isRead ? (
+                        <Chip
+                          size="small"
+                          label="New"
+                          color="primary"
+                          sx={{ height: 20, fontSize: '0.65rem', fontWeight: 900 }}
                         />
-                      )}
+                      ) : null}
                     </Stack>
-                    
+
                     <Typography sx={{ opacity: 0.85, mt: 1, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-                      {n.message}
+                      {notification.message}
                     </Typography>
 
                     <Typography sx={{ opacity: 0.4, mt: 1.5, fontSize: '0.75rem', fontWeight: 600 }}>
-                      {new Date(n.createdAt).toLocaleString(undefined, { 
-                        dateStyle: 'medium', 
-                        timeStyle: 'short' 
-                      })}
+                      {formatDateTime(notification.createdAt)}
                     </Typography>
                   </Stack>
 
-                  <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
-                    {n.linkUrl && (
-                      <Button 
-                        size="small" 
-                        variant="contained" 
-                        component={RouterLink} 
-                        to={n.linkUrl}
+                  <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                    {notification.linkUrl ? (
+                      <Button
+                        size="small"
+                        variant="contained"
+                        component={RouterLink}
+                        to={notification.linkUrl}
+                        onClick={() => void markRead(notification)}
                         sx={{ fontWeight: 800 }}
                       >
                         Open
                       </Button>
-                    ) }
-                    {!n.isRead && (
-                      <Button 
-                        size="small" 
-                        variant="outlined" 
-                        onClick={() => void markRead(n)}
+                    ) : null}
+
+                    {!notification.isRead ? (
+                      <Button
+                        size="small"
+                        variant="outlined"
+                        onClick={() => void markRead(notification)}
                         sx={{ fontWeight: 800 }}
                       >
                         Dismiss
                       </Button>
-                    )}
+                    ) : null}
                   </Stack>
                 </Stack>
-
-                {idx !== items.length - 1 && (
-                  <Divider sx={{ position: 'absolute', bottom: 0, left: 20, right: 20, borderColor: 'rgba(255,255,255,0.05)' }} />
-                )}
               </Box>
-            ))}
-          </Box>
+
+              {index !== items.length - 1 ? (
+                <Divider sx={{ mx: 3, borderColor: 'rgba(255,255,255,0.05)' }} />
+              ) : null}
+            </Box>
+          ))
         )}
       </Paper>
     </Box>

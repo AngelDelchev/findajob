@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 using findajob.Data;
 using findajob.Models;
@@ -25,61 +26,42 @@ public class MessagesController : ControllerBase
         _userManager = userManager;
     }
 
-    [HttpGet]
-    public async Task<IActionResult> GetMine()
-    {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId))
-            return Unauthorized();
-
-        var messages = await _context
-            .Messages.Where(m => m.SenderUserId == userId || m.ReceiverUserId == userId)
-            .OrderByDescending(m => m.SentAt)
-            .ToListAsync();
-
-        return Ok(messages);
-    }
-
     [HttpGet("inbox")]
     public async Task<IActionResult> Inbox()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var allMessages = await _context
-            .Messages.Where(m => m.SenderUserId == userId || m.ReceiverUserId == userId)
-            .OrderByDescending(m => m.SentAt)
+        var messages = await VisibleMessages(userId).AsNoTracking().ToListAsync();
+
+        var blockedByMe = await _context
+            .BlockedUsers.Where(b => b.BlockerId == userId)
+            .Select(b => b.BlockedId)
             .ToListAsync();
 
-        var blockedByMe = await _context.BlockedUsers.Where(b => b.BlockerId == userId).Select(b => b.BlockedId).ToListAsync();
-        var blockedMe = await _context.BlockedUsers.Where(b => b.BlockedId == userId).Select(b => b.BlockerId).ToListAsync();
+        var blockedMe = await _context
+            .BlockedUsers.Where(b => b.BlockedId == userId)
+            .Select(b => b.BlockerId)
+            .ToListAsync();
 
-        var grouped = allMessages
+        var conversations = messages
             .GroupBy(m => m.SenderUserId == userId ? m.ReceiverUserId : m.SenderUserId)
-            .Select(g =>
+            .Select(group => new
             {
-                var latest = g.OrderByDescending(x => x.SentAt).First();
-                var otherUserId =
-                    latest.SenderUserId == userId ? latest.ReceiverUserId : latest.SenderUserId;
-                var unreadCount = g.Count(x => x.ReceiverUserId == userId && !x.IsRead);
-
-                return new
-                {
-                    OtherUserId = otherUserId,
-                    Latest = latest,
-                    UnreadCount = unreadCount,
-                    IBlockedThem = blockedByMe.Contains(otherUserId),
-                    TheyBlockedMe = blockedMe.Contains(otherUserId)
-                };
+                OtherUserId = group.Key,
+                Latest = group.MaxBy(m => m.SentAt)!,
+                UnreadCount = group.Count(m => m.ReceiverUserId == userId && !m.IsRead),
             })
-            .OrderByDescending(x => x.Latest.SentAt)
+            .OrderByDescending(c => c.Latest.SentAt)
             .ToList();
 
-        var otherUserIds = grouped.Select(x => x.OtherUserId).Distinct().ToList();
-
+        var otherIds = conversations.Select(c => c.OtherUserId).ToList();
         var users = await _userManager
-            .Users.Where(u => otherUserIds.Contains(u.Id))
+            .Users.AsNoTracking()
+            .Where(u => otherIds.Contains(u.Id))
             .Select(u => new
             {
                 u.Id,
@@ -91,31 +73,28 @@ public class MessagesController : ControllerBase
             })
             .ToListAsync();
 
-        var result = grouped.Select(x =>
+        var result = conversations.Select(conversation =>
         {
-            var u = users.FirstOrDefault(a => a.Id == x.OtherUserId);
-
-            var displayName =
-                u == null ? "Unknown user"
-                : !string.IsNullOrWhiteSpace($"{u.FirstName} {u.LastName}".Trim())
-                    ? $"{u.FirstName} {u.LastName}".Trim()
-                : !string.IsNullOrWhiteSpace(u.CompanyName) ? u.CompanyName
-                : u.Email ?? "Unknown user";
+            var other = users.FirstOrDefault(u => u.Id == conversation.OtherUserId);
 
             return new
             {
-                otherUserId = x.OtherUserId,
-                otherUserName = displayName,
-                otherUserEmail = u?.Email,
-                otherUserCompany = u?.CompanyName,
-                otherUserTitle = u?.ProfessionalTitle,
-                lastMessageId = x.Latest.Id,
-                lastMessageSubject = x.Latest.Subject,
-                lastMessageContent = x.Latest.Content,
-                lastMessageSentAt = x.Latest.SentAt,
-                unreadCount = x.UnreadCount,
-                iBlockedThem = x.IBlockedThem,
-                theyBlockedMe = x.TheyBlockedMe
+                otherUserId = conversation.OtherUserId,
+                otherUserName = DisplayName(
+                    other?.FirstName,
+                    other?.LastName,
+                    other?.CompanyName,
+                    other?.Email
+                ),
+                otherUserCompany = other?.CompanyName,
+                otherUserTitle = other?.ProfessionalTitle,
+                lastMessageId = conversation.Latest.Id,
+                lastMessageSubject = conversation.Latest.Subject,
+                lastMessageContent = conversation.Latest.Content,
+                lastMessageSentAt = conversation.Latest.SentAt,
+                unreadCount = conversation.UnreadCount,
+                iBlockedThem = blockedByMe.Contains(conversation.OtherUserId),
+                theyBlockedMe = blockedMe.Contains(conversation.OtherUserId),
             };
         });
 
@@ -127,88 +106,111 @@ public class MessagesController : ControllerBase
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var messages = await _context
-            .Messages.Where(m =>
-                (m.SenderUserId == userId && m.ReceiverUserId == otherUserId)
-                || (m.SenderUserId == otherUserId && m.ReceiverUserId == userId)
-            )
+        var messages = await VisibleMessages(userId)
+            .Where(m => m.SenderUserId == otherUserId || m.ReceiverUserId == otherUserId)
             .OrderBy(m => m.SentAt)
             .ToListAsync();
 
-        var unreadMessages = messages.Where(m => m.ReceiverUserId == userId && !m.IsRead).ToList();
-
-        foreach (var message in unreadMessages)
+        var unread = messages.Where(m => m.ReceiverUserId == userId && !m.IsRead).ToList();
+        if (unread.Count > 0)
         {
-            message.IsRead = true;
-        }
+            foreach (var message in unread)
+            {
+                message.IsRead = true;
+            }
 
-        if (unreadMessages.Count > 0)
-        {
             await _context.SaveChangesAsync();
         }
 
-        var iBlockedThem = await _context.BlockedUsers.AnyAsync(b => b.BlockerId == userId && b.BlockedId == otherUserId);
-        var theyBlockedMe = await _context.BlockedUsers.AnyAsync(b => b.BlockerId == otherUserId && b.BlockedId == userId);
-
         return Ok(new
         {
-            messages,
-            iBlockedThem,
-            theyBlockedMe
+            messages = messages.Select(m => new
+            {
+                m.Id,
+                m.SenderUserId,
+                m.ReceiverUserId,
+                m.Subject,
+                m.Content,
+                m.IsRead,
+                m.SentAt,
+            }),
+            iBlockedThem = await _context.BlockedUsers.AnyAsync(b =>
+                b.BlockerId == userId && b.BlockedId == otherUserId
+            ),
+            theyBlockedMe = await _context.BlockedUsers.AnyAsync(b =>
+                b.BlockerId == otherUserId && b.BlockedId == userId
+            ),
         });
     }
 
     [HttpPost]
     public async Task<IActionResult> Send([FromBody] SendMessageRequest request)
     {
-        var senderUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(senderUserId))
+        var senderId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(senderId))
+        {
             return Unauthorized();
+        }
 
-        if (string.IsNullOrWhiteSpace(request.ReceiverUserId))
-            return BadRequest(new { message = "Receiver is required." });
+        var receiverId = request.ReceiverUserId.Trim();
 
-        if (string.IsNullOrWhiteSpace(request.Content))
+        if (string.IsNullOrWhiteSpace(receiverId))
+        {
+            return BadRequest(new { message = "A recipient is required." });
+        }
+
+        if (receiverId == senderId)
+        {
+            return BadRequest(new { message = "You cannot send a message to yourself." });
+        }
+
+        var content = request.Content.Trim();
+        if (content.Length == 0)
+        {
             return BadRequest(new { message = "Message content is required." });
+        }
 
-        // Check if blocked
+        var receiver = await _userManager.FindByIdAsync(receiverId);
+        if (receiver is null)
+        {
+            return NotFound(new { message = "Recipient not found." });
+        }
+
         var isBlocked = await _context.BlockedUsers.AnyAsync(b =>
-            (b.BlockerId == request.ReceiverUserId && b.BlockedId == senderUserId)
-            || (b.BlockerId == senderUserId && b.BlockedId == request.ReceiverUserId)
+            (b.BlockerId == receiverId && b.BlockedId == senderId)
+            || (b.BlockerId == senderId && b.BlockedId == receiverId)
         );
 
         if (isBlocked)
-            return BadRequest(new { message = "Messaging is blocked between you and this user." });
-
-        var receiver = await _userManager.FindByIdAsync(request.ReceiverUserId);
-        if (receiver == null)
-            return NotFound(new { message = "Receiver not found." });
-
-        var message = new Message
         {
-            SenderUserId = senderUserId,
-            ReceiverUserId = request.ReceiverUserId,
-            JobApplicationId = request.JobApplicationId,
-            Subject = request.Subject?.Trim() ?? "",
-            Content = request.Content.Trim(),
-            IsRead = false,
-            SentAt = DateTime.UtcNow,
-        };
+            return BadRequest(new { message = "Messaging is blocked between you and this user." });
+        }
 
-        _context.Messages.Add(message);
+        _context.Messages.Add(
+            new Message
+            {
+                SenderUserId = senderId,
+                ReceiverUserId = receiverId,
+                JobApplicationId = request.JobApplicationId,
+                Subject = request.Subject.Trim(),
+                Content = content,
+                SentAt = DateTime.UtcNow,
+            }
+        );
 
         _context.Notifications.Add(
             new Notification
             {
-                UserId = request.ReceiverUserId,
+                UserId = receiverId,
                 Title = "New message",
                 Message = string.IsNullOrWhiteSpace(request.Subject)
                     ? "You received a new message."
-                    : $"You received a new message: {request.Subject}",
-                Type = "Message",
-                IsRead = false,
+                    : $"You received a new message: {request.Subject.Trim()}",
+                Type = NotificationTypes.Message,
                 LinkUrl = "/messages",
                 CreatedAt = DateTime.UtcNow,
             }
@@ -219,19 +221,41 @@ public class MessagesController : ControllerBase
         return Ok(new { message = "Message sent successfully." });
     }
 
+    /// <summary>
+    /// Hides a conversation for the caller only. The rows are removed once both
+    /// participants have deleted them.
+    /// </summary>
     [HttpDelete("conversation/{otherUserId}")]
     public async Task<IActionResult> DeleteConversation(string otherUserId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
+        {
             return Unauthorized();
+        }
 
-        var messages = await _context.Messages
-            .Where(m => (m.SenderUserId == userId && m.ReceiverUserId == otherUserId)
-                     || (m.SenderUserId == otherUserId && m.ReceiverUserId == userId))
+        var messages = await _context
+            .Messages.Where(m =>
+                (m.SenderUserId == userId && m.ReceiverUserId == otherUserId)
+                || (m.SenderUserId == otherUserId && m.ReceiverUserId == userId)
+            )
             .ToListAsync();
 
-        _context.Messages.RemoveRange(messages);
+        foreach (var message in messages)
+        {
+            if (message.SenderUserId == userId)
+            {
+                message.DeletedBySender = true;
+            }
+            else
+            {
+                message.DeletedByReceiver = true;
+            }
+        }
+
+        var invisibleToBoth = messages.Where(m => m is { DeletedBySender: true, DeletedByReceiver: true });
+        _context.Messages.RemoveRange(invisibleToBoth);
+
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "Conversation deleted." });
@@ -241,13 +265,28 @@ public class MessagesController : ControllerBase
     public async Task<IActionResult> BlockUser(string otherUserId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var existing = await _context.BlockedUsers.FirstOrDefaultAsync(b => b.BlockerId == userId && b.BlockedId == otherUserId);
-        if (existing != null) return Ok(new { message = "User already blocked." });
+        if (userId == otherUserId)
+        {
+            return BadRequest(new { message = "You cannot block yourself." });
+        }
+
+        var alreadyBlocked = await _context.BlockedUsers.AnyAsync(b =>
+            b.BlockerId == userId && b.BlockedId == otherUserId
+        );
+
+        if (alreadyBlocked)
+        {
+            return Ok(new { message = "User already blocked." });
+        }
 
         _context.BlockedUsers.Add(new BlockedUser { BlockerId = userId, BlockedId = otherUserId });
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "User blocked." });
     }
 
@@ -255,13 +294,23 @@ public class MessagesController : ControllerBase
     public async Task<IActionResult> UnblockUser(string otherUserId)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var existing = await _context.BlockedUsers.FirstOrDefaultAsync(b => b.BlockerId == userId && b.BlockedId == otherUserId);
-        if (existing == null) return Ok(new { message = "User not blocked." });
+        var block = await _context.BlockedUsers.FirstOrDefaultAsync(b =>
+            b.BlockerId == userId && b.BlockedId == otherUserId
+        );
 
-        _context.BlockedUsers.Remove(existing);
+        if (block is null)
+        {
+            return Ok(new { message = "User not blocked." });
+        }
+
+        _context.BlockedUsers.Remove(block);
         await _context.SaveChangesAsync();
+
         return Ok(new { message = "User unblocked." });
     }
 
@@ -269,21 +318,59 @@ public class MessagesController : ControllerBase
     public async Task<IActionResult> GetBlockedIds()
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
 
-        var ids = await _context.BlockedUsers
-            .Where(b => b.BlockerId == userId)
+        var ids = await _context
+            .BlockedUsers.Where(b => b.BlockerId == userId)
             .Select(b => b.BlockedId)
             .ToListAsync();
 
         return Ok(ids);
     }
 
+    /// <summary>Messages the caller is a party to and has not deleted on their side.</summary>
+    private IQueryable<Message> VisibleMessages(string userId) =>
+        _context.Messages.Where(m =>
+            (m.SenderUserId == userId && !m.DeletedBySender)
+            || (m.ReceiverUserId == userId && !m.DeletedByReceiver)
+        );
+
+    private static string DisplayName(
+        string? firstName,
+        string? lastName,
+        string? companyName,
+        string? email
+    )
+    {
+        var name = $"{firstName} {lastName}".Trim();
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            return name;
+        }
+
+        if (!string.IsNullOrWhiteSpace(companyName))
+        {
+            return companyName;
+        }
+
+        return string.IsNullOrWhiteSpace(email) ? "Unknown user" : email;
+    }
+
     public class SendMessageRequest
     {
+        [Required]
         public string ReceiverUserId { get; set; } = "";
+
         public int? JobApplicationId { get; set; }
+
+        [MaxLength(200)]
         public string Subject { get; set; } = "";
+
+        [Required]
+        [MaxLength(5000)]
         public string Content { get; set; } = "";
     }
 }

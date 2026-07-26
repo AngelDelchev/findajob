@@ -1,148 +1,204 @@
-import { useEffect, useMemo, useState } from 'react'
-import { api } from '../../api'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { api, errorMessage } from '../../api'
+import { useToast } from '../../toast'
+import { useConfirm } from '../../confirm'
+import { formatDate } from '../../utils'
+import ProfileHeader from './ProfileHeader'
+import ProfileSection from './ProfileSection'
+import type { MyProfile } from '../../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
+import Checkbox from '@mui/material/Checkbox'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
-import Divider from '@mui/material/Divider'
-import LinearProgress from '@mui/material/LinearProgress'
-import Paper from '@mui/material/Paper'
-import Stack from '@mui/material/Stack'
-import Typography from '@mui/material/Typography'
 import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
-import TextField from '@mui/material/TextField'
+import Divider from '@mui/material/Divider'
 import FormControlLabel from '@mui/material/FormControlLabel'
-import Checkbox from '@mui/material/Checkbox'
 import IconButton from '@mui/material/IconButton'
-
+import LinearProgress from '@mui/material/LinearProgress'
+import Paper from '@mui/material/Paper'
+import Stack from '@mui/material/Stack'
+import TextField from '@mui/material/TextField'
+import Typography from '@mui/material/Typography'
 import BusinessCenterIcon from '@mui/icons-material/BusinessCenter'
-import SchoolIcon from '@mui/icons-material/School'
-import DescriptionIcon from '@mui/icons-material/Description'
 import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 import DeleteIcon from '@mui/icons-material/Delete'
+import DescriptionIcon from '@mui/icons-material/Description'
+import SchoolIcon from '@mui/icons-material/School'
 
-import ProfileHeader from './ProfileHeader'
-import ProfileSection from './ProfileSection'
+type Cv = {
+  id: number
+  fileName: string
+  fileSize: number
+  isPrimary: boolean
+  uploadedAt: string
+}
 
-export default function EmployeeProfile({ 
-  profile, 
-  onRefresh 
-}: { 
-  profile: any, 
-  onRefresh: () => Promise<void> 
-}) {
-  const [cvs, setCvs] = useState<any[]>([])
-  const [uploadingCv, setUploadingCvs] = useState(false)
-  
-  // Modals state
+type Props = {
+  profile: MyProfile | null
+  onRefresh: () => Promise<void>
+}
+
+const MAX_CV_BYTES = 10 * 1024 * 1024
+
+const emptyExperience = {
+  title: '',
+  company: '',
+  startDate: '',
+  endDate: '',
+  isCurrent: false,
+  description: '',
+}
+
+const emptyEducation = { school: '', degree: '', fieldOfStudy: '', startYear: '', endYear: '' }
+
+export default function EmployeeProfile({ profile, onRefresh }: Props) {
+  const { showSuccess, showError } = useToast()
+  const confirm = useConfirm()
+
+  const [cvs, setCvs] = useState<Cv[]>([])
+  const [uploading, setUploading] = useState(false)
   const [activeModal, setActiveModal] = useState<'experience' | 'education' | 'skill' | null>(null)
-  const [expForm, setExpForm] = useState({ title: '', company: '', startDate: '', endDate: '', isCurrent: false, description: '' })
-  const [eduForm, setEduForm] = useState({ school: '', degree: '', fieldOfStudy: '', startYear: '', endYear: '' })
+  const [experienceForm, setExperienceForm] = useState(emptyExperience)
+  const [educationForm, setEducationForm] = useState(emptyEducation)
   const [skillName, setSkillName] = useState('')
-  const [isSaving, setIsSaving] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const loadCvs = async () => {
+  const loadCvs = useCallback(async () => {
     try {
-      const res = await api.get('/cv/my')
-      setCvs(res.data ?? [])
-    } catch { /* ignore */ }
-  }
+      const response = await api.get<Cv[]>('/cv/my')
+      setCvs(response.data)
+    } catch {
+      setCvs([])
+    }
+  }, [])
 
   useEffect(() => {
     void loadCvs()
-  }, [])
+  }, [loadCvs])
 
-  const handleCvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const uploadCv = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
     if (!file) return
 
-    setUploadingCvs(true)
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('isPrimary', 'true')
+    if (file.size > MAX_CV_BYTES) {
+      showError('Please choose a file smaller than 10 MB.')
+      event.target.value = ''
+      return
+    }
+
+    setUploading(true)
+
+    const data = new FormData()
+    data.append('file', file)
+    data.append('isPrimary', 'true')
 
     try {
-      await api.post('/cv/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      await api.post('/cv/upload', data)
       await loadCvs()
-    } catch (err) {
-      console.error('CV upload failed:', err)
-      alert('Failed to upload CV.')
+      showSuccess('CV uploaded.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not upload your CV.'))
     } finally {
-      setUploadingCvs(false)
+      setUploading(false)
+      event.target.value = ''
     }
   }
 
-  const deleteCv = async (id: number) => {
-    if (!window.confirm('Delete this resume?')) return
-    await api.delete(`/cv/${id}`)
-    await loadCvs()
+  const deleteCv = async (cv: Cv) => {
+    const confirmed = await confirm({
+      title: 'Delete this CV?',
+      description: `"${cv.fileName}" will be removed from your profile.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
+    try {
+      await api.delete(`/cv/${cv.id}`)
+      await loadCvs()
+      showSuccess('CV deleted.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not delete this CV.'))
+    }
   }
 
   const addExperience = async () => {
-    setIsSaving(true)
+    setSaving(true)
     try {
-      await api.post('/profiles/experience', expForm)
-      setExpForm({ title: '', company: '', startDate: '', endDate: '', isCurrent: false, description: '' })
+      await api.post('/profiles/experience', experienceForm)
+      setExperienceForm(emptyExperience)
       setActiveModal(null)
       await onRefresh()
-    } finally { setIsSaving(false) }
-  }
-
-  const deleteExperience = async (id: number) => {
-    if (!window.confirm('Remove this experience?')) return
-    await api.delete(`/profiles/experience/${id}`)
-    await onRefresh()
+      showSuccess('Experience added.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not add this experience.'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const addEducation = async () => {
-    setIsSaving(true)
+    setSaving(true)
     try {
-      await api.post('/profiles/education', eduForm)
-      setEduForm({ school: '', degree: '', fieldOfStudy: '', startYear: '', endYear: '' })
+      await api.post('/profiles/education', educationForm)
+      setEducationForm(emptyEducation)
       setActiveModal(null)
       await onRefresh()
-    } finally { setIsSaving(false) }
-  }
-
-  const deleteEducation = async (id: number) => {
-    if (!window.confirm('Remove this education?')) return
-    await api.delete(`/profiles/education/${id}`)
-    await onRefresh()
+      showSuccess('Education added.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not add this education entry.'))
+    } finally {
+      setSaving(false)
+    }
   }
 
   const addSkill = async () => {
     if (!skillName.trim()) return
-    setIsSaving(true)
+
+    setSaving(true)
     try {
       await api.post('/profiles/skill', { name: skillName.trim() })
       setSkillName('')
       setActiveModal(null)
       await onRefresh()
-    } finally { setIsSaving(false) }
+      showSuccess('Skill added.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not add this skill.'))
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const deleteSkill = async (id: number) => {
-    await api.delete(`/profiles/skill/${id}`)
-    await onRefresh()
+  const removeItem = async (kind: 'experience' | 'education' | 'skill', id: number) => {
+    const confirmed = await confirm({
+      title: `Remove this ${kind}?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
+    try {
+      await api.delete(`/profiles/${kind}/${id}`)
+      await onRefresh()
+      showSuccess('Removed.')
+    } catch (error) {
+      showError(errorMessage(error, 'Could not remove this entry.'))
+    }
   }
 
   const completeness = useMemo(() => {
     let score = 10
-    const bio = profile?.bio || profile?.Bio
-    const avatarUrl = profile?.avatarUrl || profile?.AvatarUrl
-    const experiences = profile?.experiences || profile?.Experiences
-    const skills = profile?.skills || profile?.Skills
-
-    if (bio && bio.trim().length > 0) score += 15
-    if (avatarUrl) score += 15
-    if (cvs && cvs.length > 0) score += 20
-    if (experiences && experiences.length > 0) score += 20
-    if (skills && skills.length > 0) score += 20
+    if (profile?.bio?.trim()) score += 15
+    if (profile?.avatarUrl) score += 15
+    if (cvs.length > 0) score += 20
+    if ((profile?.experiences?.length ?? 0) > 0) score += 20
+    if ((profile?.skills?.length ?? 0) > 0) score += 20
     return Math.min(score, 100)
   }, [profile, cvs])
 
@@ -151,165 +207,393 @@ export default function EmployeeProfile({
       <ProfileHeader profile={profile} onRefresh={onRefresh} />
 
       <Stack spacing={3} sx={{ maxWidth: 800 }}>
-        {completeness < 100 && (
+        {completeness < 100 ? (
           <Paper sx={{ p: 3, border: '1px solid rgba(0,229,255,0.2)', background: 'rgba(0,229,255,0.02)' }}>
             <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
-              <Typography sx={{ fontWeight: 800 }}>Profile Completeness</Typography>
+              <Typography sx={{ fontWeight: 800 }}>Profile completeness</Typography>
               <Typography sx={{ fontWeight: 900, color: 'primary.main' }}>{completeness}%</Typography>
             </Stack>
-            <LinearProgress variant="determinate" value={completeness} sx={{ height: 10, borderRadius: 5 }} />
+            <LinearProgress
+              variant="determinate"
+              value={completeness}
+              sx={{ height: 10, borderRadius: 5 }}
+            />
             <Typography variant="caption" sx={{ mt: 1, display: 'block', opacity: 0.6 }}>
-              Complete your profile to unlock more opportunities!
+              A complete profile gets noticed by more employers.
             </Typography>
           </Paper>
-        )}
+        ) : null}
 
         <ProfileSection title="Resumes & CVs">
           <Stack spacing={2}>
-            {cvs.map(cv => (
-              <Paper key={cv.id} sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <DescriptionIcon sx={{ color: 'primary.main' }} />
-                  <Box>
-                    <Typography sx={{ fontWeight: 700 }}>{cv.fileName}</Typography>
-                    <Typography variant="caption" sx={{ opacity: 0.5 }}>Uploaded {new Date(cv.uploadedAt).toLocaleDateString()}</Typography>
+            {cvs.map((cv) => (
+              <Paper
+                key={cv.id}
+                sx={{
+                  p: 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  gap: 2,
+                }}
+              >
+                <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
+                  <DescriptionIcon sx={{ color: 'primary.main', flexShrink: 0 }} />
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography sx={{ fontWeight: 700 }} noWrap>
+                      {cv.fileName}
+                    </Typography>
+                    <Typography variant="caption" sx={{ opacity: 0.5 }}>
+                      Uploaded {formatDate(cv.uploadedAt)} · {(cv.fileSize / 1024).toFixed(0)} KB
+                    </Typography>
                   </Box>
                 </Stack>
-                <Button size="small" color="error" onClick={() => void deleteCv(cv.id)}>Remove</Button>
+
+                <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    href={`/api/cv/${cv.id}/content`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View
+                  </Button>
+                  <Button size="small" color="error" onClick={() => void deleteCv(cv)}>
+                    Remove
+                  </Button>
+                </Stack>
               </Paper>
             ))}
-            <Button variant="outlined" component="label" startIcon={uploadingCv ? <CircularProgress size={20} /> : <CloudUploadIcon />} disabled={uploadingCv} sx={{ py: 2, borderStyle: 'dashed' }}>
-              {uploadingCv ? 'Uploading...' : 'Upload new Resume (PDF)'}
-              <input type="file" hidden accept=".pdf" onChange={handleCvUpload} />
+
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={uploading ? <CircularProgress size={20} /> : <CloudUploadIcon />}
+              disabled={uploading}
+              sx={{ py: 2, borderStyle: 'dashed' }}
+            >
+              {uploading ? 'Uploading…' : 'Upload a resume (PDF, DOC, DOCX)'}
+              <input type="file" hidden accept=".pdf,.doc,.docx" onChange={uploadCv} />
             </Button>
           </Stack>
         </ProfileSection>
 
         <ProfileSection title="About">
-          <Typography sx={{ lineHeight: 1.7, opacity: 0.9 }}>
-            {profile?.bio || 'No bio provided yet. Tell companies about your professional journey!'}
+          <Typography sx={{ lineHeight: 1.7, opacity: 0.9, whiteSpace: 'pre-wrap' }}>
+            {profile?.bio || 'No bio yet. Tell companies about your professional journey.'}
           </Typography>
         </ProfileSection>
 
         <ProfileSection title="Experience" onAdd={() => setActiveModal('experience')}>
           <Stack spacing={3}>
-            {(profile?.experiences || []).map((exp: any, idx: number) => (
-              <Box key={exp.id}>
+            {(profile?.experiences ?? []).map((experience, index, array) => (
+              <Box key={experience.id}>
                 <Stack direction="row" spacing={2}>
-                  <Box sx={{ width: 48, height: 48, backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      flexShrink: 0,
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 1,
+                    }}
+                  >
                     <BusinessCenterIcon sx={{ opacity: 0.5 }} />
                   </Box>
-                  <Box sx={{ flex: 1 }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                       <Box>
-                        <Typography sx={{ fontWeight: 800 }}>{exp.title}</Typography>
-                        <Typography variant="body2" sx={{ fontWeight: 700, opacity: 0.8 }}>{exp.company}</Typography>
-                        <Typography variant="caption" sx={{ opacity: 0.5 }}>{exp.startDate} - {exp.isCurrent ? 'Present' : exp.endDate}</Typography>
+                        <Typography sx={{ fontWeight: 800 }}>{experience.title}</Typography>
+                        <Typography variant="body2" sx={{ fontWeight: 700, opacity: 0.8 }}>
+                          {experience.company}
+                        </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.5 }}>
+                          {experience.startDate} –{' '}
+                          {experience.isCurrent ? 'Present' : experience.endDate || 'Present'}
+                        </Typography>
                       </Box>
-                      <IconButton size="small" onClick={() => deleteExperience(exp.id)}><DeleteIcon fontSize="small" color="error" /></IconButton>
+                      <IconButton
+                        size="small"
+                        aria-label="Remove experience"
+                        onClick={() => void removeItem('experience', experience.id)}
+                      >
+                        <DeleteIcon fontSize="small" color="error" />
+                      </IconButton>
                     </Stack>
-                    <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>{exp.description}</Typography>
+                    {experience.description ? (
+                      <Typography variant="body2" sx={{ mt: 1, opacity: 0.8 }}>
+                        {experience.description}
+                      </Typography>
+                    ) : null}
                   </Box>
                 </Stack>
-                {idx !== profile.experiences.length - 1 && <Divider sx={{ mt: 3, borderColor: 'rgba(255,255,255,0.05)' }} />}
+                {index !== array.length - 1 ? (
+                  <Divider sx={{ mt: 3, borderColor: 'rgba(255,255,255,0.05)' }} />
+                ) : null}
               </Box>
             ))}
-            {(!profile?.experiences?.length) && <Typography sx={{ opacity: 0.5, fontStyle: 'italic' }}>No experience entries added yet.</Typography>}
+
+            {(profile?.experiences?.length ?? 0) === 0 ? (
+              <Typography sx={{ opacity: 0.5, fontStyle: 'italic' }}>
+                No experience added yet.
+              </Typography>
+            ) : null}
           </Stack>
         </ProfileSection>
 
         <ProfileSection title="Education" onAdd={() => setActiveModal('education')}>
           <Stack spacing={3}>
-            {(profile?.educations || []).map((edu: any, idx: number) => (
-              <Box key={edu.id}>
+            {(profile?.educations ?? []).map((education, index, array) => (
+              <Box key={education.id}>
                 <Stack direction="row" spacing={2}>
-                  <Box sx={{ width: 48, height: 48, backgroundColor: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 1 }}>
+                  <Box
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      flexShrink: 0,
+                      backgroundColor: 'rgba(255,255,255,0.05)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      borderRadius: 1,
+                    }}
+                  >
                     <SchoolIcon sx={{ opacity: 0.5 }} />
                   </Box>
-                  <Box sx={{ flex: 1 }}>
-                    <Stack direction="row" justifyContent="space-between">
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                       <Box>
-                        <Typography sx={{ fontWeight: 800 }}>{edu.school}</Typography>
-                        <Typography variant="body2" sx={{ opacity: 0.8 }}>{edu.degree} • {edu.fieldOfStudy}</Typography>
-                        <Typography variant="caption" sx={{ opacity: 0.5 }}>{edu.startYear} - {edu.endYear || 'Present'}</Typography>
+                        <Typography sx={{ fontWeight: 800 }}>{education.school}</Typography>
+                        <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                          {[education.degree, education.fieldOfStudy].filter(Boolean).join(' • ')}
+                        </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.5 }}>
+                          {education.startYear} – {education.endYear || 'Present'}
+                        </Typography>
                       </Box>
-                      <IconButton size="small" onClick={() => deleteEducation(edu.id)}><DeleteIcon fontSize="small" color="error" /></IconButton>
+                      <IconButton
+                        size="small"
+                        aria-label="Remove education"
+                        onClick={() => void removeItem('education', education.id)}
+                      >
+                        <DeleteIcon fontSize="small" color="error" />
+                      </IconButton>
                     </Stack>
                   </Box>
                 </Stack>
-                {idx !== profile.educations.length - 1 && <Divider sx={{ mt: 3, borderColor: 'rgba(255,255,255,0.05)' }} />}
+                {index !== array.length - 1 ? (
+                  <Divider sx={{ mt: 3, borderColor: 'rgba(255,255,255,0.05)' }} />
+                ) : null}
               </Box>
             ))}
-            {(!profile?.educations?.length) && <Typography sx={{ opacity: 0.5, fontStyle: 'italic' }}>No education entries added yet.</Typography>}
+
+            {(profile?.educations?.length ?? 0) === 0 ? (
+              <Typography sx={{ opacity: 0.5, fontStyle: 'italic' }}>
+                No education added yet.
+              </Typography>
+            ) : null}
           </Stack>
         </ProfileSection>
 
         <ProfileSection title="Skills" onAdd={() => setActiveModal('skill')}>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-            {(profile?.skills || []).map((skill: any) => (
-              <Chip 
-                key={skill.id} 
-                label={skill.name} 
-                onDelete={() => deleteSkill(skill.id)}
-                variant="outlined" 
-                sx={{ borderRadius: 1, fontWeight: 800, border: '1px solid rgba(255,255,255,0.2)' }} 
+            {(profile?.skills ?? []).map((skill) => (
+              <Chip
+                key={skill.id}
+                label={skill.name}
+                onDelete={() => void removeItem('skill', skill.id)}
+                variant="outlined"
+                sx={{ borderRadius: 1, fontWeight: 800, border: '1px solid rgba(255,255,255,0.2)' }}
               />
             ))}
-            {(!profile?.skills?.length) && <Typography sx={{ opacity: 0.5, fontStyle: 'italic' }}>No skills added yet.</Typography>}
+
+            {(profile?.skills?.length ?? 0) === 0 ? (
+              <Typography sx={{ opacity: 0.5, fontStyle: 'italic' }}>No skills added yet.</Typography>
+            ) : null}
           </Box>
         </ProfileSection>
-
-        <Paper sx={{ p: 3, border: '1px solid rgba(255,255,255,0.08)', mb: 3 }}>
-          <Typography sx={{ fontWeight: 800, mb: 1 }}>Profile Tools</Typography>
-          <Stack direction="row" spacing={1.5}>
-            <Button variant="contained" size="small" onClick={() => alert('Feature coming soon.')} sx={{ borderRadius: 20 }}>Get noticed</Button>
-            <Button variant="outlined" size="small" onClick={() => alert('Feature coming soon.')} sx={{ borderRadius: 20 }}>Public view</Button>
-          </Stack>
-        </Paper>
       </Stack>
 
-      {/* Experience Modal */}
-      <Dialog open={activeModal === 'experience'} onClose={() => setActiveModal(null)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: 900 }}>Add Experience</DialogTitle>
+      <Dialog
+        open={activeModal === 'experience'}
+        onClose={() => setActiveModal(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: 900 }}>Add experience</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="Title" value={expForm.title} onChange={e => setExpForm({...expForm, title: e.target.value})} fullWidth />
-            <TextField label="Company" value={expForm.company} onChange={e => setExpForm({...expForm, company: e.target.value})} fullWidth />
-            <Stack direction="row" spacing={2}>
-              <TextField label="Start Date (e.g. Jan 2020)" value={expForm.startDate} onChange={e => setExpForm({...expForm, startDate: e.target.value})} fullWidth />
-              <TextField label="End Date" value={expForm.endDate} onChange={e => setExpForm({...expForm, endDate: e.target.value})} fullWidth disabled={expForm.isCurrent} />
+            <TextField
+              label="Title"
+              value={experienceForm.title}
+              onChange={(event) => setExperienceForm({ ...experienceForm, title: event.target.value })}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Company"
+              value={experienceForm.company}
+              onChange={(event) =>
+                setExperienceForm({ ...experienceForm, company: event.target.value })
+              }
+              fullWidth
+              required
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Start date"
+                placeholder="Jan 2020"
+                value={experienceForm.startDate}
+                onChange={(event) =>
+                  setExperienceForm({ ...experienceForm, startDate: event.target.value })
+                }
+                fullWidth
+              />
+              <TextField
+                label="End date"
+                value={experienceForm.endDate}
+                onChange={(event) =>
+                  setExperienceForm({ ...experienceForm, endDate: event.target.value })
+                }
+                fullWidth
+                disabled={experienceForm.isCurrent}
+              />
             </Stack>
-            <FormControlLabel control={<Checkbox checked={expForm.isCurrent} onChange={e => setExpForm({...expForm, isCurrent: e.target.checked})} />} label="I am currently working here" />
-            <TextField label="Description" value={expForm.description} onChange={e => setExpForm({...expForm, description: e.target.value})} fullWidth multiline minRows={3} />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={experienceForm.isCurrent}
+                  onChange={(event) =>
+                    setExperienceForm({
+                      ...experienceForm,
+                      isCurrent: event.target.checked,
+                      endDate: event.target.checked ? '' : experienceForm.endDate,
+                    })
+                  }
+                />
+              }
+              label="I currently work here"
+            />
+            <TextField
+              label="Description"
+              value={experienceForm.description}
+              onChange={(event) =>
+                setExperienceForm({ ...experienceForm, description: event.target.value })
+              }
+              fullWidth
+              multiline
+              minRows={3}
+            />
           </Stack>
         </DialogContent>
-        <DialogActions><Button onClick={() => setActiveModal(null)}>Cancel</Button><Button variant="contained" disabled={isSaving} onClick={addExperience}>Save</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={() => setActiveModal(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={saving || !experienceForm.title.trim() || !experienceForm.company.trim()}
+            onClick={() => void addExperience()}
+          >
+            Save
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      {/* Education Modal */}
-      <Dialog open={activeModal === 'education'} onClose={() => setActiveModal(null)} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontWeight: 900 }}>Add Education</DialogTitle>
+      <Dialog
+        open={activeModal === 'education'}
+        onClose={() => setActiveModal(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle sx={{ fontWeight: 900 }}>Add education</DialogTitle>
         <DialogContent dividers>
           <Stack spacing={2} sx={{ mt: 1 }}>
-            <TextField label="School" value={eduForm.school} onChange={e => setEduForm({...eduForm, school: e.target.value})} fullWidth />
-            <TextField label="Degree" value={eduForm.degree} onChange={e => setEduForm({...eduForm, degree: e.target.value})} fullWidth />
-            <TextField label="Field of Study" value={eduForm.fieldOfStudy} onChange={e => setEduForm({...eduForm, fieldOfStudy: e.target.value})} fullWidth />
-            <Stack direction="row" spacing={2}>
-              <TextField label="Start Year" value={eduForm.startYear} onChange={e => setEduForm({...eduForm, startYear: e.target.value})} fullWidth />
-              <TextField label="End Year (optional)" value={eduForm.endYear} onChange={e => setEduForm({...eduForm, endYear: e.target.value})} fullWidth />
+            <TextField
+              label="School"
+              value={educationForm.school}
+              onChange={(event) => setEducationForm({ ...educationForm, school: event.target.value })}
+              fullWidth
+              required
+            />
+            <TextField
+              label="Degree"
+              value={educationForm.degree}
+              onChange={(event) => setEducationForm({ ...educationForm, degree: event.target.value })}
+              fullWidth
+            />
+            <TextField
+              label="Field of study"
+              value={educationForm.fieldOfStudy}
+              onChange={(event) =>
+                setEducationForm({ ...educationForm, fieldOfStudy: event.target.value })
+              }
+              fullWidth
+            />
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+              <TextField
+                label="Start year"
+                value={educationForm.startYear}
+                onChange={(event) =>
+                  setEducationForm({ ...educationForm, startYear: event.target.value })
+                }
+                fullWidth
+              />
+              <TextField
+                label="End year (optional)"
+                value={educationForm.endYear}
+                onChange={(event) =>
+                  setEducationForm({ ...educationForm, endYear: event.target.value })
+                }
+                fullWidth
+              />
             </Stack>
           </Stack>
         </DialogContent>
-        <DialogActions><Button onClick={() => setActiveModal(null)}>Cancel</Button><Button variant="contained" disabled={isSaving} onClick={addEducation}>Save</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={() => setActiveModal(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={saving || !educationForm.school.trim()}
+            onClick={() => void addEducation()}
+          >
+            Save
+          </Button>
+        </DialogActions>
       </Dialog>
 
-      {/* Skill Modal */}
-      <Dialog open={activeModal === 'skill'} onClose={() => setActiveModal(null)} fullWidth maxWidth="xs">
-        <DialogTitle sx={{ fontWeight: 900 }}>Add Skill</DialogTitle>
+      <Dialog
+        open={activeModal === 'skill'}
+        onClose={() => setActiveModal(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle sx={{ fontWeight: 900 }}>Add skill</DialogTitle>
         <DialogContent dividers>
-          <TextField label="Skill Name" value={skillName} onChange={e => setSkillName(e.target.value)} fullWidth sx={{ mt: 1 }} autoFocus />
+          <TextField
+            label="Skill name"
+            value={skillName}
+            onChange={(event) => setSkillName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && skillName.trim()) {
+                event.preventDefault()
+                void addSkill()
+              }
+            }}
+            fullWidth
+            sx={{ mt: 1 }}
+            autoFocus
+          />
         </DialogContent>
-        <DialogActions><Button onClick={() => setActiveModal(null)}>Cancel</Button><Button variant="contained" disabled={isSaving} onClick={addSkill}>Add</Button></DialogActions>
+        <DialogActions>
+          <Button onClick={() => setActiveModal(null)}>Cancel</Button>
+          <Button variant="contained" disabled={saving || !skillName.trim()} onClick={() => void addSkill()}>
+            Add
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   )

@@ -12,7 +12,7 @@ namespace findajob.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260504040308_gg")]
-    partial class gg
+    partial class InitialSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

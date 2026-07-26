@@ -12,7 +12,7 @@ namespace findajob.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
     [Migration("20260504180832_maybegg")]
-    partial class maybegg
+    partial class ExpandJobAndProfileFields
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

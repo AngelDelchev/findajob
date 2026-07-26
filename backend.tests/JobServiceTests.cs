@@ -1,92 +1,208 @@
-using findajob.Data;
 using findajob.Models;
 using findajob.Services;
 using Microsoft.EntityFrameworkCore;
-using Moq;
-using Xunit;
 
 namespace backend.tests;
 
-public class JobServiceTests
+public class JobServiceTests : IAsyncLifetime, IDisposable
 {
-    private readonly Mock<IDbContextFactory<ApplicationDbContext>> _mockFactory;
-    private readonly DbContextOptions<ApplicationDbContext> _options;
+    private readonly SqliteTestDatabase _database = new();
+    private readonly JobService _service;
 
     public JobServiceTests()
     {
-        _mockFactory = new Mock<IDbContextFactory<ApplicationDbContext>>();
-        _options = new DbContextOptionsBuilder<ApplicationDbContext>()
-            .UseInMemoryDatabase(databaseName: Guid.NewGuid().ToString())
-            .Options;
-
-        _mockFactory.Setup(f => f.CreateDbContextAsync(default))
-            .ReturnsAsync(() => new ApplicationDbContext(_options));
+        _service = new JobService(_database);
     }
 
-    [Fact]
-    public async Task CreateJobAsync_ShouldAddJobToDatabase()
+    /// <summary>
+    /// Postings and applications have foreign keys to <c>AspNetUsers</c>, which real
+    /// SQLite enforces, so the people these tests refer to have to exist.
+    /// </summary>
+    public async Task InitializeAsync()
     {
-        // Arrange
-        var service = new JobService(_mockFactory.Object);
-        var job = new JobPosting
+        await _database.AddUserAsync("owner-1");
+        await _database.AddUserAsync("employer-a");
+        await _database.AddUserAsync("employer-b");
+        await _database.AddUserAsync("seeker-1");
+        await _database.AddUserAsync("seeker-2");
+    }
+
+    Task IAsyncLifetime.DisposeAsync() => Task.CompletedTask;
+
+    public void Dispose() => _database.Dispose();
+
+    private static JobPosting NewJob(
+        string title = "Software Engineer",
+        string company = "Test Corp",
+        string owner = "owner-1",
+        params string[] tags
+    ) =>
+        new()
         {
-            Title = "Software Engineer",
-            Company = "Test Corp",
-            OwnerId = "user1",
-            Tags = new List<string> { "C#", ".NET" }
+            Title = title,
+            Company = company,
+            Description = "A description.",
+            Location = "Sofia, Bulgaria",
+            OwnerId = owner,
+            Tags = [.. tags],
         };
 
-        // Act
-        await service.CreateJobAsync(job);
+    [Fact]
+    public async Task CreateJobAsync_StoresTheJobAndItsTags()
+    {
+        var created = await _service.CreateJobAsync(NewJob(tags: ["C#", ".NET"]));
 
-        // Assert
-        using var context = new ApplicationDbContext(_options);
-        var savedJob = await context.JobPostings.FirstOrDefaultAsync();
-        Assert.NotNull(savedJob);
-        Assert.Equal("Software Engineer", savedJob.Title);
-        Assert.Equal("Test Corp", savedJob.Company);
+        var loaded = await _service.GetJobByIdAsync(created.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal("Software Engineer", loaded.Title);
+        Assert.Equal([".NET", "C#"], loaded.Tags.Order());
     }
 
     [Fact]
-    public async Task GetJobsAsync_ShouldReturnActiveJobs()
+    public async Task CreateJobAsync_ReusesAnExistingTagRatherThanDuplicatingIt()
     {
-        // Arrange
-        using (var context = new ApplicationDbContext(_options))
+        await _service.CreateJobAsync(NewJob(title: "First", tags: ["C#"]));
+        await _service.CreateJobAsync(NewJob(title: "Second", tags: ["c#"]));
+
+        await using var context = _database.CreateDbContext();
+
+        // Tag names are unique, so a differently-cased duplicate must not be inserted.
+        Assert.Equal(1, await context.Tags.CountAsync());
+    }
+
+    [Fact]
+    public async Task SearchJobsAsync_ExcludesArchivedPostings()
+    {
+        var visible = await _service.CreateJobAsync(NewJob(title: "Visible"));
+        var archived = await _service.CreateJobAsync(NewJob(title: "Archived"));
+
+        await _service.SetJobVisibilityAsync(archived.Id, "owner-1", isAdmin: false, isDeleted: true);
+
+        var result = await _service.SearchJobsAsync(null);
+
+        Assert.Equal(1, result.Total);
+        Assert.Equal(visible.Id, Assert.Single(result.Items).Id);
+    }
+
+    [Fact]
+    public async Task SearchJobsAsync_MatchesOnTitleCompanyLocationAndTags()
+    {
+        await _service.CreateJobAsync(NewJob(title: "Backend Engineer", company: "Acme"));
+        await _service.CreateJobAsync(NewJob(title: "Designer", company: "Globex", tags: ["Figma"]));
+
+        Assert.Equal(1, (await _service.SearchJobsAsync("backend")).Total);
+        Assert.Equal(1, (await _service.SearchJobsAsync("globex")).Total);
+        Assert.Equal(1, (await _service.SearchJobsAsync("figma")).Total);
+        Assert.Equal(2, (await _service.SearchJobsAsync("sofia")).Total);
+        Assert.Equal(0, (await _service.SearchJobsAsync("nothing-matches")).Total);
+    }
+
+    [Fact]
+    public async Task SearchJobsAsync_ReturnsRequestedPageAndReportsTheTotal()
+    {
+        for (var i = 0; i < 25; i++)
         {
-            context.JobPostings.Add(new JobPosting { Title = "Job 1", Company = "C1", OwnerId = "O1", IsDeleted = false });
-            context.JobPostings.Add(new JobPosting { Title = "Job 2", Company = "C2", OwnerId = "O2", IsDeleted = true });
-            await context.SaveChangesAsync();
+            await _service.CreateJobAsync(NewJob(title: $"Job {i}"));
         }
-        var service = new JobService(_mockFactory.Object);
 
-        // Act
-        var jobs = await service.GetJobsAsync();
+        var firstPage = await _service.SearchJobsAsync(null, page: 1, pageSize: 10);
+        var lastPage = await _service.SearchJobsAsync(null, page: 3, pageSize: 10);
 
-        // Assert
-        Assert.Single(jobs);
-        Assert.Equal("Job 1", jobs[0].Title);
+        Assert.Equal(25, firstPage.Total);
+        Assert.Equal(3, firstPage.TotalPages);
+        Assert.Equal(10, firstPage.Items.Count);
+        Assert.Equal(5, lastPage.Items.Count);
     }
 
     [Fact]
-    public async Task SubmitApplicationAsync_ShouldAddApplication()
+    public async Task SearchJobsAsync_ClampsAnAbsurdPageSize()
     {
-        // Arrange
-        var service = new JobService(_mockFactory.Object);
-        var app = new JobApplication
-        {
-            JobId = 1,
-            UserId = "user1",
-            ApplicantName = "John Doe",
-            Status = "Pending"
-        };
+        await _service.CreateJobAsync(NewJob());
 
-        // Act
-        await service.SubmitApplicationAsync(app);
+        var result = await _service.SearchJobsAsync(null, page: 0, pageSize: 100_000);
 
-        // Assert
-        using var context = new ApplicationDbContext(_options);
-        var savedApp = await context.JobApplications.FirstOrDefaultAsync();
-        Assert.NotNull(savedApp);
-        Assert.Equal("John Doe", savedApp.ApplicantName);
+        Assert.Equal(1, result.Page);
+        Assert.Equal(JobService.MaxPageSize, result.PageSize);
+    }
+
+    [Fact]
+    public async Task UpdateJobAsync_ReplacesTheTagSet()
+    {
+        var job = await _service.CreateJobAsync(NewJob(tags: ["C#", "SQL"]));
+
+        job.Tags = ["React"];
+        var updated = await _service.UpdateJobAsync(job, "owner-1");
+
+        Assert.True(updated);
+
+        var loaded = await _service.GetJobByIdAsync(job.Id);
+        Assert.Equal(["React"], loaded!.Tags);
+    }
+
+    [Fact]
+    public async Task UpdateJobAsync_RefusesWhenTheCallerIsNotTheOwner()
+    {
+        var job = await _service.CreateJobAsync(NewJob(tags: ["C#"]));
+
+        job.Title = "Hijacked";
+        var updated = await _service.UpdateJobAsync(job, "someone-else");
+
+        Assert.False(updated);
+        Assert.Equal("Software Engineer", (await _service.GetJobByIdAsync(job.Id))!.Title);
+    }
+
+    [Fact]
+    public async Task UpdateJobAsync_AllowsAnAdministratorToEditAnyPosting()
+    {
+        var job = await _service.CreateJobAsync(NewJob());
+
+        job.Title = "Edited by admin";
+        var updated = await _service.UpdateJobAsync(job, "admin-id", isAdmin: true);
+
+        Assert.True(updated);
+        Assert.Equal("Edited by admin", (await _service.GetJobByIdAsync(job.Id))!.Title);
+    }
+
+    [Fact]
+    public async Task DeleteJobAsync_ArchivesRatherThanRemoving()
+    {
+        var job = await _service.CreateJobAsync(NewJob());
+
+        Assert.True(await _service.DeleteJobAsync(job.Id, "owner-1", isAdmin: false));
+
+        await using var context = _database.CreateDbContext();
+        var stored = await context.JobPostings.IgnoreQueryFilters().SingleAsync(j => j.Id == job.Id);
+
+        Assert.True(stored.IsDeleted);
+    }
+
+    [Fact]
+    public async Task GetJobsByOwnerAsync_IncludesArchivedPostingsSoTheyCanBeRestored()
+    {
+        var job = await _service.CreateJobAsync(NewJob());
+        await _service.SetJobVisibilityAsync(job.Id, "owner-1", isAdmin: false, isDeleted: true);
+
+        var mine = await _service.GetJobsByOwnerAsync("owner-1");
+
+        Assert.True(Assert.Single(mine).IsDeleted);
+    }
+
+    [Fact]
+    public async Task GetApplicationsForEmployerAsync_ReturnsOnlyApplicationsToThatEmployersJobs()
+    {
+        var mine = await _service.CreateJobAsync(NewJob(title: "Mine", owner: "employer-a"));
+        var theirs = await _service.CreateJobAsync(NewJob(title: "Theirs", owner: "employer-b"));
+
+        await _service.SubmitApplicationAsync(
+            new JobApplication { JobId = mine.Id, UserId = "seeker-1", ApplicantName = "Ada" }
+        );
+        await _service.SubmitApplicationAsync(
+            new JobApplication { JobId = theirs.Id, UserId = "seeker-2", ApplicantName = "Grace" }
+        );
+
+        var applications = await _service.GetApplicationsForEmployerAsync("employer-a");
+
+        Assert.Equal("Ada", Assert.Single(applications).ApplicantName);
     }
 }

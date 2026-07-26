@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using findajob.Data;
 using findajob.Models;
+using findajob.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -12,21 +13,27 @@ namespace findajob.Controllers;
 [Authorize]
 public class CvController : ControllerBase
 {
-    private readonly ApplicationDbContext _context;
-    private readonly IWebHostEnvironment _environment;
+    private const long MaxFileSizeBytes = 10 * 1024 * 1024;
 
-    public CvController(ApplicationDbContext context, IWebHostEnvironment environment)
+    private static readonly Dictionary<string, string> AllowedTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        [".pdf"] = "application/pdf",
+        [".doc"] = "application/msword",
+        [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    };
+
+    private readonly ApplicationDbContext _context;
+    private readonly IFileStorage _storage;
+
+    public CvController(ApplicationDbContext context, IFileStorage storage)
     {
         _context = context;
-        _environment = environment;
+        _storage = storage;
     }
 
     [HttpPost("upload")]
-    [RequestSizeLimit(10_000_000)]
-    public async Task<IActionResult> Upload(
-        [FromForm] IFormFile file,
-        [FromForm] bool isPrimary = false
-    )
+    [RequestSizeLimit(MaxFileSizeBytes)]
+    public async Task<IActionResult> Upload([FromForm] IFormFile file, [FromForm] bool isPrimary = false)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
@@ -34,29 +41,24 @@ public class CvController : ControllerBase
             return Unauthorized();
         }
 
-        if (file == null || file.Length == 0)
+        if (file is null || file.Length == 0)
         {
             return BadRequest(new { message = "No file uploaded." });
         }
 
-        var allowedExtensions = new[] { ".pdf", ".doc", ".docx" };
-        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (file.Length > MaxFileSizeBytes)
+        {
+            return BadRequest(new { message = "The file must be 10 MB or smaller." });
+        }
 
-        if (!allowedExtensions.Contains(extension))
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!AllowedTypes.TryGetValue(extension, out var contentType))
         {
             return BadRequest(new { message = "Only PDF, DOC, and DOCX files are allowed." });
         }
 
-        var uploadsFolder = Path.Combine(_environment.WebRootPath, "uploads", "cvs");
-        Directory.CreateDirectory(uploadsFolder);
-
-        var storedFileName = $"{Guid.NewGuid()}{extension}";
-        var fullPath = Path.Combine(uploadsFolder, storedFileName);
-
-        await using (var stream = new FileStream(fullPath, FileMode.Create))
-        {
-            await file.CopyToAsync(stream);
-        }
+        await using var stream = file.OpenReadStream();
+        var storedFileName = await _storage.SaveAsync(FileStorageFolders.Cvs, file.FileName, stream);
 
         if (isPrimary)
         {
@@ -70,30 +72,30 @@ public class CvController : ControllerBase
             }
         }
 
-        var cvDocument = new CvDocument
+        var document = new CvDocument
         {
             UserId = userId,
-            FileName = file.FileName,
+            FileName = Path.GetFileName(file.FileName),
             StoredFileName = storedFileName,
-            ContentType = file.ContentType,
+            // Trust the extension we validated rather than the client-supplied header.
+            ContentType = contentType,
             FileSize = file.Length,
             UploadedAt = DateTime.UtcNow,
             IsPrimary = isPrimary,
-            ExtractedText = string.Empty,
         };
 
-        _context.CvDocuments.Add(cvDocument);
+        _context.CvDocuments.Add(document);
         await _context.SaveChangesAsync();
 
         return Ok(
             new
             {
                 message = "CV uploaded successfully.",
-                cvDocument.Id,
-                cvDocument.FileName,
-                cvDocument.FileSize,
-                cvDocument.UploadedAt,
-                cvDocument.IsPrimary,
+                document.Id,
+                document.FileName,
+                document.FileSize,
+                document.UploadedAt,
+                document.IsPrimary,
             }
         );
     }
@@ -110,12 +112,28 @@ public class CvController : ControllerBase
         var cvs = await _context
             .CvDocuments.Where(c => c.UserId == userId)
             .OrderByDescending(c => c.UploadedAt)
+            .Select(c => new
+            {
+                c.Id,
+                c.FileName,
+                c.FileSize,
+                c.IsPrimary,
+                c.UploadedAt,
+            })
             .ToListAsync();
 
         return Ok(cvs);
     }
 
-    [HttpGet("download/{id:int}")]
+    /// <summary>
+    /// Streams the stored file.
+    ///
+    /// CVs used to live under <c>wwwroot</c> and were handed out by the static-file
+    /// middleware, so anyone holding the URL could read any applicant's CV regardless
+    /// of these checks. They are now stored outside the web root and this is the only
+    /// way to reach one.
+    /// </summary>
+    [HttpGet("{id:int}/content")]
     public async Task<IActionResult> Download(int id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -125,25 +143,23 @@ public class CvController : ControllerBase
         }
 
         var cv = await _context.CvDocuments.FirstOrDefaultAsync(c => c.Id == id);
-        if (cv == null)
+        if (cv is null)
         {
             return NotFound(new { message = "CV not found." });
         }
 
-        var isAdmin = User.IsInRole("Admin");
-        if (cv.UserId != userId && !isAdmin)
+        if (!await CanAccessAsync(cv, userId))
         {
             return Forbid();
         }
 
-        var filePath = Path.Combine(_environment.WebRootPath, "uploads", "cvs", cv.StoredFileName);
-        if (!System.IO.File.Exists(filePath))
+        var stream = _storage.OpenRead(FileStorageFolders.Cvs, cv.StoredFileName);
+        if (stream is null)
         {
-            return NotFound(new { message = "Stored file not found." });
+            return NotFound(new { message = "The stored file is no longer available." });
         }
 
-        var fileBytes = await System.IO.File.ReadAllBytesAsync(filePath);
-        return File(fileBytes, cv.ContentType, cv.FileName);
+        return File(stream, cv.ContentType, cv.FileName);
     }
 
     [HttpDelete("{id:int}")]
@@ -156,26 +172,43 @@ public class CvController : ControllerBase
         }
 
         var cv = await _context.CvDocuments.FirstOrDefaultAsync(c => c.Id == id);
-        if (cv == null)
+        if (cv is null)
         {
             return NotFound(new { message = "CV not found." });
         }
 
-        var isAdmin = User.IsInRole("Admin");
-        if (cv.UserId != userId && !isAdmin)
+        if (cv.UserId != userId && !User.IsInRole(Roles.Admin))
         {
             return Forbid();
         }
 
-        var filePath = Path.Combine(_environment.WebRootPath, "uploads", "cvs", cv.StoredFileName);
-        if (System.IO.File.Exists(filePath))
-        {
-            System.IO.File.Delete(filePath);
-        }
-
+        _storage.Delete(FileStorageFolders.Cvs, cv.StoredFileName);
         _context.CvDocuments.Remove(cv);
         await _context.SaveChangesAsync();
 
         return Ok(new { message = "CV deleted successfully." });
+    }
+
+    /// <summary>
+    /// The owner and administrators may always read a CV. An employer may read it only
+    /// while the owner has an open application against one of that employer's postings.
+    /// </summary>
+    private async Task<bool> CanAccessAsync(CvDocument cv, string userId)
+    {
+        if (cv.UserId == userId || User.IsInRole(Roles.Admin))
+        {
+            return true;
+        }
+
+        if (!User.IsInRole(Roles.Employer))
+        {
+            return false;
+        }
+
+        return await _context.JobApplications.AnyAsync(a =>
+            a.UserId == cv.UserId
+            && _context.JobPostings.IgnoreQueryFilters()
+                .Any(j => j.Id == a.JobId && j.OwnerId == userId)
+        );
     }
 }

@@ -5,7 +5,7 @@
 namespace findajob.Migrations
 {
     /// <inheritdoc />
-    public partial class maybegg : Migration
+    public partial class ExpandJobAndProfileFields : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)

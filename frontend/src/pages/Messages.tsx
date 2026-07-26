@@ -1,378 +1,355 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { api } from '../api'
+import { api, errorMessage } from '../api'
+import { useAuth } from '../auth'
+import { useToast } from '../toast'
+import { useConfirm } from '../confirm'
+import ProfileDialog from '../components/ProfileDialog'
+import type { Conversation, ThreadMessage } from '../types'
 import Alert from '@mui/material/Alert'
+import Avatar from '@mui/material/Avatar'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Divider from '@mui/material/Divider'
 import IconButton from '@mui/material/IconButton'
+import ListItemIcon from '@mui/material/ListItemIcon'
 import Menu from '@mui/material/Menu'
 import MenuItem from '@mui/material/MenuItem'
-import ListItemIcon from '@mui/material/ListItemIcon'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
-import MoreVertIcon from '@mui/icons-material/MoreVert'
-import DeleteIcon from '@mui/icons-material/Delete'
-import PersonIcon from '@mui/icons-material/Person'
 import BlockIcon from '@mui/icons-material/Block'
-import FlagIcon from '@mui/icons-material/Flag'
-import CircularProgress from '@mui/material/CircularProgress'
-import Dialog from '@mui/material/Dialog'
-import DialogActions from '@mui/material/DialogActions'
-import DialogContent from '@mui/material/DialogContent'
-import DialogTitle from '@mui/material/DialogTitle'
-import PublicProfileView from '../components/PublicProfileView'
+import DeleteIcon from '@mui/icons-material/Delete'
+import MoreVertIcon from '@mui/icons-material/MoreVert'
+import PersonIcon from '@mui/icons-material/Person'
 
-type InboxItem = {
-  otherUserId: string
-  otherUserName?: string
-  id: number
-  subject: string
-  content: string
-  sentAt: string
-  unreadCount: number
-  iBlockedThem: boolean
-  theyBlockedMe: boolean
-}
+/** How often the open thread is refreshed. */
+const POLL_INTERVAL_MS = 15_000
 
-type ThreadItem = {
-  id: number
-  senderUserId: string
-  receiverUserId: string
-  senderUserName?: string
-  receiverUserName?: string
-  subject: string
-  content: string
-  sentAt: string
-  isRead: boolean
-}
+const dayLabel = (date: Date) => {
+  const today = new Date()
+  const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
-const getDayLabel = (date: Date) => {
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const yesterday = new Date(today)
-  yesterday.setDate(yesterday.getDate() - 1)
+  const diffDays = Math.round((startOfToday.getTime() - startOfDate.getTime()) / 86_400_000)
 
-  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-
-  if (d.getTime() === today.getTime()) return 'Today'
-  if (d.getTime() === yesterday.getTime()) return 'Yesterday'
-
-  const diffDays = Math.floor((today.getTime() - d.getTime()) / (1000 * 60 * 60 * 24))
-  if (diffDays < 7) {
-    return date.toLocaleDateString(undefined, { weekday: 'long' })
-  }
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  if (diffDays < 7) return date.toLocaleDateString(undefined, { weekday: 'long' })
 
   return date.toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
-const format24h = (date: Date) => {
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
-}
+const timeLabel = (date: Date) =>
+  date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })
 
 export default function Messages() {
   const [params] = useSearchParams()
-  const initialUserId = params.get('user') || params.get('userId') || ''
+  const { user } = useAuth()
+  const { showSuccess, showError } = useToast()
+  const confirm = useConfirm()
 
-  const [inbox, setInbox] = useState<InboxItem[]>([])
-  const [selectedOtherId, setSelectedOtherId] = useState(initialUserId)
-  const [thread, setThread] = useState<ThreadItem[]>([])
+  const [inbox, setInbox] = useState<Conversation[]>([])
+  const [selectedId, setSelectedId] = useState(params.get('userId') ?? '')
+  const [thread, setThread] = useState<ThreadMessage[]>([])
   const [iBlockedThem, setIBlockedThem] = useState(false)
   const [theyBlockedMe, setTheyBlockedMe] = useState(false)
-  const [selectedOtherProfile, setSelectedOtherProfile] = useState<any | null>(null)
-  const [openProfile, setOpenProfile] = useState(false)
-  const [draftContent, setDraftContent] = useState('')
+  const [draft, setDraft] = useState('')
   const [error, setError] = useState('')
   const [loadingInbox, setLoadingInbox] = useState(true)
-  const [loadingThread, setLoadingThread] = useState(false)
   const [sending, setSending] = useState(false)
 
-  // Menu state
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [menuUserId, setMenuUserId] = useState<string | null>(null)
+  const [viewingProfileOf, setViewingProfileOf] = useState<string | null>(null)
 
-  const handleMenuOpen = (event: MouseEvent<HTMLElement>, userId: string) => {
-    event.stopPropagation()
-    setAnchorEl(event.currentTarget)
-    setMenuUserId(userId)
-  }
+  const bottomRef = useRef<HTMLDivElement | null>(null)
 
-  const handleMenuClose = () => {
-    setAnchorEl(null)
-    setMenuUserId(null)
-  }
-
-  const handleDeleteChat = async () => {
-    if (!menuUserId) return
-    if (!window.confirm('Are you sure you want to delete this conversation? This cannot be undone.')) return
-    
-    try {
-      await api.delete(`/messages/conversation/${menuUserId}`)
-      setInbox(prev => prev.filter(item => item.otherUserId !== menuUserId))
-      if (selectedOtherId === menuUserId) {
-        setSelectedOtherId('')
-        setThread([])
-      }
-    } catch (e) {
-      console.error('Failed to delete chat:', e)
-      alert('Failed to delete conversation.')
-    } finally {
-      handleMenuClose()
-    }
-  }
-
-  const viewProfile = async () => {
-    if (!menuUserId) return
-    const id = menuUserId
-    handleMenuClose()
-    try {
-      const res = await api.get(`/profiles/${id}`)
-      setSelectedOtherProfile(res.data)
-      setOpenProfile(true)
-    } catch (e) {
-      console.error('Failed to load profile:', e)
-      alert('Could not load user profile.')
-    }
-  }
-
-  const blockUser = async () => {
-    if (!menuUserId) return
-    const targetUser = inbox.find(i => i.otherUserId === menuUserId)
-    const isBlocked = targetUser?.iBlockedThem ?? iBlockedThem
-    
-    if (!isBlocked && !window.confirm('Block this user? You will no longer receive messages from them.')) return
-    
-    try {
-      if (isBlocked) {
-        await api.delete(`/messages/block/${menuUserId}`)
-      } else {
-        await api.post(`/messages/block/${menuUserId}`)
-      }
-      
-      if (selectedOtherId === menuUserId) {
-        setIBlockedThem(!isBlocked)
-      }
-      await loadInbox(true)
-      alert(isBlocked ? 'User unblocked.' : 'User blocked.')
-    } catch {
-      alert('Action failed.')
-    } finally {
-      handleMenuClose()
-    }
-  }
-
-  const reportUser = async () => {
-    if (!menuUserId) return
-    const reason = window.prompt('Reason for reporting this user:')
-    if (!reason) return
-    handleMenuClose()
-    alert('Report submitted to admin.')
-  }
-
-  const selectedConversation = useMemo(
-    () => inbox.find((x) => x.otherUserId === selectedOtherId) ?? null,
-    [inbox, selectedOtherId]
-  )
-
-  const loadInbox = async (silent = false) => {
+  const loadInbox = useCallback(async (silent = false) => {
     if (!silent) setLoadingInbox(true)
-    try {
-      const res = await api.get('/messages/inbox')
-      const raw = Array.isArray(res.data) ? res.data : []
 
-      setInbox(
-        raw.map((item: any) => ({
-          otherUserId: String(item?.otherUserId ?? ''),
-          otherUserName: item?.otherUserName ? String(item.otherUserName) : undefined,
-          id: Number(item?.lastMessageId ?? 0),
-          subject: String(item?.lastMessageSubject ?? ''),
-          content: String(item?.lastMessageContent ?? ''),
-          sentAt: String(item?.lastMessageSentAt ?? ''),
-          unreadCount: Number(item?.unreadCount ?? 0),
-          iBlockedThem: !!item?.iBlockedThem,
-          theyBlockedMe: !!item?.theyBlockedMe
-        }))
-      )
-    } catch (e) {
-      console.error('Inbox load failed:', e)
-      if (!silent) setError('Failed to load inbox.')
+    try {
+      const response = await api.get<Conversation[]>('/messages/inbox')
+      setInbox(response.data)
+    } catch (err) {
+      if (!silent) setError(errorMessage(err, 'Could not load your inbox.'))
     } finally {
       if (!silent) setLoadingInbox(false)
     }
-  }
+  }, [])
 
-  const loadThread = async (otherUserId: string, silent = false) => {
+  const loadThread = useCallback(async (otherUserId: string) => {
     if (!otherUserId) {
       setThread([])
       return
     }
 
-    if (!silent) setLoadingThread(true)
     try {
-      const res = await api.get(`/messages/thread/${otherUserId}`)
-      const data = res.data
-      const rawMessages = Array.isArray(data?.messages) ? data.messages : []
+      const response = await api.get<{
+        messages: ThreadMessage[]
+        iBlockedThem: boolean
+        theyBlockedMe: boolean
+      }>(`/messages/thread/${otherUserId}`)
 
-      setThread(
-        rawMessages.map((msg: any) => ({
-          id: Number(msg?.id ?? 0),
-          senderUserId: String(msg?.senderUserId ?? ''),
-          receiverUserId: String(msg?.receiverUserId ?? ''),
-          senderUserName: msg?.senderUserName ? String(msg.senderUserName) : undefined,
-          receiverUserName: msg?.receiverUserName ? String(msg.receiverUserName) : undefined,
-          subject: String(msg?.subject ?? ''),
-          content: String(msg?.content ?? ''),
-          sentAt: String(msg?.sentAt ?? ''),
-          isRead: Boolean(msg?.isRead),
-        }))
-      )
-      setIBlockedThem(!!data?.iBlockedThem)
-      setTheyBlockedMe(!!data?.theyBlockedMe)
-    } catch (e) {
-      console.error('Thread load failed:', e)
-      if (!silent) {
-        setThread([])
-        setError('Failed to load thread.')
-      }
-    } finally {
-      if (!silent) setLoadingThread(false)
+      setThread(response.data.messages)
+      setIBlockedThem(response.data.iBlockedThem)
+      setTheyBlockedMe(response.data.theyBlockedMe)
+    } catch (err) {
+      setError(errorMessage(err, 'Could not load this conversation.'))
     }
-  }
-
-  // Initial loads
-  useEffect(() => {
-    void loadInbox()
   }, [])
 
   useEffect(() => {
-    if (selectedOtherId) {
-      void loadThread(selectedOtherId)
-    }
-  }, [selectedOtherId])
+    void loadInbox()
+  }, [loadInbox])
 
-  // Polling for real-time updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      void loadInbox(true)
-      if (selectedOtherId) {
-        void loadThread(selectedOtherId, true)
-      }
-    }, 4000)
+    if (selectedId) void loadThread(selectedId)
+  }, [selectedId, loadThread])
 
-    return () => clearInterval(interval)
-  }, [selectedOtherId])
+  /**
+   * Polling replaces a real-time connection. It runs every 15 seconds rather than
+   * every 4, which was refetching the entire inbox and thread fifteen times a minute
+   * per open tab, and it pauses while the tab is hidden.
+   */
+  useEffect(() => {
+    const tick = () => {
+      if (document.hidden) return
+      void loadInbox(true)
+      if (selectedId) void loadThread(selectedId)
+    }
+
+    const interval = window.setInterval(tick, POLL_INTERVAL_MS)
+    return () => window.clearInterval(interval)
+  }, [selectedId, loadInbox, loadThread])
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [thread])
+
+  const selectedConversation = useMemo(
+    () => inbox.find((conversation) => conversation.otherUserId === selectedId) ?? null,
+    [inbox, selectedId]
+  )
+
+  const closeMenu = () => {
+    setAnchorEl(null)
+    setMenuUserId(null)
+  }
+
+  const openMenu = (event: MouseEvent<HTMLElement>, userId: string) => {
+    event.stopPropagation()
+    setAnchorEl(event.currentTarget)
+    setMenuUserId(userId)
+  }
 
   const sendMessage = async () => {
-    if (!selectedOtherId) return
-    if (!draftContent.trim()) return
+    if (!selectedId || !draft.trim()) return
 
     setSending(true)
     setError('')
 
     try {
-      await api.post('/messages', {
-        receiverUserId: selectedOtherId,
-        subject: 'Chat Message', // Providing a default subject just in case backend requires it
-        content: draftContent.trim(),
-      })
-
-      setDraftContent('')
-
-      await loadThread(selectedOtherId, true)
+      await api.post('/messages', { receiverUserId: selectedId, content: draft.trim() })
+      setDraft('')
+      await loadThread(selectedId)
       await loadInbox(true)
-    } catch (e: any) {
-      setError(e?.response?.data?.message || 'Failed to send message.')
+    } catch (err) {
+      setError(errorMessage(err, 'Could not send your message.'))
     } finally {
       setSending(false)
     }
   }
 
-  const threadWithDividers = useMemo(() => {
-    const items: (ThreadItem | { type: 'divider'; label: string })[] = []
-    let lastDateLabel = ''
+  const viewProfile = () => {
+    setViewingProfileOf(menuUserId)
+    closeMenu()
+  }
 
-    for (const msg of thread) {
-      const date = new Date(msg.sentAt)
-      const label = getDayLabel(date)
-      if (label !== lastDateLabel) {
-        items.push({ type: 'divider', label })
-        lastDateLabel = label
-      }
-      items.push(msg)
+  const toggleBlock = async () => {
+    if (!menuUserId) return
+    const id = menuUserId
+    const conversation = inbox.find((item) => item.otherUserId === id)
+    const blocked = conversation?.iBlockedThem ?? iBlockedThem
+    closeMenu()
+
+    if (!blocked) {
+      const confirmed = await confirm({
+        title: 'Block this user?',
+        description: 'You will no longer receive messages from them.',
+        confirmLabel: 'Block',
+        destructive: true,
+      })
+
+      if (!confirmed) return
     }
 
-    return items
+    try {
+      if (blocked) {
+        await api.delete(`/messages/block/${id}`)
+        showSuccess('User unblocked.')
+      } else {
+        await api.post(`/messages/block/${id}`)
+        showSuccess('User blocked.')
+      }
+
+      if (selectedId === id) setIBlockedThem(!blocked)
+      await loadInbox(true)
+    } catch (err) {
+      showError(errorMessage(err, 'Could not update the block list.'))
+    }
+  }
+
+  const deleteConversation = async () => {
+    if (!menuUserId) return
+    const id = menuUserId
+    closeMenu()
+
+    const confirmed = await confirm({
+      title: 'Delete this conversation?',
+      description:
+        'It will be removed from your inbox. The other person keeps their own copy of the messages.',
+      confirmLabel: 'Delete',
+      destructive: true,
+    })
+
+    if (!confirmed) return
+
+    try {
+      await api.delete(`/messages/conversation/${id}`)
+      setInbox((previous) => previous.filter((item) => item.otherUserId !== id))
+
+      if (selectedId === id) {
+        setSelectedId('')
+        setThread([])
+      }
+
+      showSuccess('Conversation deleted.')
+    } catch (err) {
+      showError(errorMessage(err, 'Could not delete this conversation.'))
+    }
+  }
+
+  // Insert a date separator whenever the day changes.
+  const threadWithSeparators = useMemo(() => {
+    const entries: ({ kind: 'divider'; label: string } | { kind: 'message'; message: ThreadMessage })[] = []
+    let lastLabel = ''
+
+    for (const message of thread) {
+      const label = dayLabel(new Date(message.sentAt))
+      if (label !== lastLabel) {
+        entries.push({ kind: 'divider', label })
+        lastLabel = label
+      }
+      entries.push({ kind: 'message', message })
+    }
+
+    return entries
   }, [thread])
+
+  const messagingDisabled = iBlockedThem || theyBlockedMe
 
   return (
     <Box>
-      {error ? <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert> : null}
+      {error ? (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      ) : null}
 
       <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ alignItems: 'stretch' }}>
-        <Paper sx={{ width: { xs: '100%', md: 320 }, border: '1px solid rgba(255,255,255,0.08)' }}>
+        <Paper
+          sx={{
+            width: { xs: '100%', md: 320 },
+            flexShrink: 0,
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}
+        >
           <Box sx={{ p: 2 }}>
-            <Typography variant="h6" sx={{ fontWeight: 800 }}>Inbox</Typography>
-            <Typography sx={{ opacity: 0.75, fontSize: '0.85rem' }}>{inbox.length} conversation(s)</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 800 }}>
+              Inbox
+            </Typography>
+            <Typography sx={{ opacity: 0.6, fontSize: '0.85rem' }}>
+              {inbox.length} conversation{inbox.length === 1 ? '' : 's'}
+            </Typography>
           </Box>
 
           <Divider sx={{ borderColor: 'rgba(255,255,255,0.08)' }} />
 
           {loadingInbox && inbox.length === 0 ? (
-            <Box sx={{ p: 2 }}>Loading…</Box>
+            <Box sx={{ p: 3, textAlign: 'center', opacity: 0.6 }}>Loading…</Box>
           ) : inbox.length === 0 ? (
-            <Box sx={{ p: 2 }}>No messages yet.</Box>
+            <Box sx={{ p: 3, textAlign: 'center', opacity: 0.6 }}>
+              No messages yet. Start one from someone's profile.
+            </Box>
           ) : (
-            <Box sx={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>
-              {inbox.map((item) => (
+            <Box sx={{ maxHeight: 'calc(100vh - 240px)', overflowY: 'auto' }}>
+              {inbox.map((conversation) => (
                 <Box
-                  key={item.otherUserId}
-                  onClick={() => setSelectedOtherId(item.otherUserId)}
+                  key={conversation.otherUserId}
+                  onClick={() => setSelectedId(conversation.otherUserId)}
                   sx={{
                     p: 2,
                     cursor: 'pointer',
-                    borderLeft: selectedOtherId === item.otherUserId ? '4px solid' : '4px solid transparent',
-                    borderColor: selectedOtherId === item.otherUserId ? 'primary.main' : 'transparent',
-                    backgroundColor: selectedOtherId === item.otherUserId ? 'rgba(255,255,255,0.05)' : 'transparent',
+                    borderLeft: '4px solid',
+                    borderLeftColor:
+                      selectedId === conversation.otherUserId ? 'primary.main' : 'transparent',
+                    backgroundColor:
+                      selectedId === conversation.otherUserId
+                        ? 'rgba(255,255,255,0.05)'
+                        : 'transparent',
                     '&:hover': { backgroundColor: 'rgba(255,255,255,0.08)' },
                     transition: 'all 0.2s',
-                    position: 'relative',
                   }}
                 >
                   <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography sx={{ fontWeight: 800 }}>
-                        {item.otherUserName || `User ${item.otherUserId}`}
-                      </Typography>
-                      <Typography noWrap sx={{ opacity: 0.7, mt: 0.5, fontSize: '0.85rem' }}>
-                        {item.content}
-                      </Typography>
-                    </Box>
-                    <IconButton 
-                      size="small" 
-                      onClick={(e) => handleMenuOpen(e, item.otherUserId)}
+                    <Stack direction="row" spacing={1.5} sx={{ minWidth: 0, flex: 1 }}>
+                      <Avatar sx={{ width: 36, height: 36, bgcolor: 'rgba(255,255,255,0.08)' }}>
+                        {conversation.otherUserName?.[0]?.toUpperCase() ?? '?'}
+                      </Avatar>
+                      <Box sx={{ minWidth: 0, flex: 1 }}>
+                        <Typography sx={{ fontWeight: 800 }} noWrap>
+                          {conversation.otherUserName}
+                        </Typography>
+                        <Typography noWrap sx={{ opacity: 0.7, fontSize: '0.85rem' }}>
+                          {conversation.lastMessageContent}
+                        </Typography>
+                      </Box>
+                    </Stack>
+
+                    <IconButton
+                      size="small"
+                      onClick={(event) => openMenu(event, conversation.otherUserId)}
+                      aria-label="Conversation options"
                       sx={{ opacity: 0.6, '&:hover': { opacity: 1 } }}
                     >
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
                   </Stack>
-                  
-                  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mt: 0.5 }}>
+
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ mt: 0.5, pl: 6 }}
+                  >
                     <Typography sx={{ opacity: 0.5, fontSize: '0.75rem' }}>
-                      {getDayLabel(new Date(item.sentAt))}
+                      {dayLabel(new Date(conversation.lastMessageSentAt))}
                     </Typography>
-                    {item.unreadCount > 0 ? (
-                      <Box sx={{ 
-                        backgroundColor: 'primary.main', 
-                        color: 'background.default', 
-                        px: 1, 
-                        borderRadius: 1,
-                        fontSize: '0.75rem',
-                        fontWeight: 900
-                      }}>
-                        {item.unreadCount}
+                    {conversation.unreadCount > 0 ? (
+                      <Box
+                        sx={{
+                          backgroundColor: 'primary.main',
+                          color: 'background.default',
+                          px: 1,
+                          borderRadius: 1,
+                          fontSize: '0.75rem',
+                          fontWeight: 900,
+                        }}
+                      >
+                        {conversation.unreadCount}
                       </Box>
                     ) : null}
                   </Stack>
@@ -382,198 +359,233 @@ export default function Messages() {
           )}
         </Paper>
 
-        <Paper sx={{ flex: 1, border: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column' }}>
-          <Box sx={{ p: 2, borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Box>
-              <Typography variant="h6" sx={{ fontWeight: 800 }}>
-                {selectedOtherId ? (selectedConversation?.otherUserName || `User ${selectedOtherId}`) : 'Select a conversation'}
+        <Paper
+          sx={{
+            flex: 1,
+            border: '1px solid rgba(255,255,255,0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: 0,
+          }}
+        >
+          <Box
+            sx={{
+              p: 2,
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 2,
+            }}
+          >
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="h6" sx={{ fontWeight: 800 }} noWrap>
+                {selectedId
+                  ? (selectedConversation?.otherUserName ?? 'Conversation')
+                  : 'Select a conversation'}
               </Typography>
-              <Typography sx={{ opacity: 0.6, fontSize: '0.85rem' }}>
-                {selectedOtherId ? 'Active Conversation' : 'Pick a conversation to start chatting'}
+              <Typography sx={{ opacity: 0.6, fontSize: '0.85rem' }} noWrap>
+                {selectedConversation?.otherUserTitle ||
+                  selectedConversation?.otherUserCompany ||
+                  (selectedId ? '' : 'Pick a conversation on the left to start chatting')}
               </Typography>
             </Box>
-            
-            {selectedOtherId && (
-              <IconButton onClick={(e) => handleMenuOpen(e, selectedOtherId)}>
+
+            {selectedId ? (
+              <IconButton onClick={(event) => openMenu(event, selectedId)} aria-label="Conversation options">
                 <MoreVertIcon />
               </IconButton>
-            )}
+            ) : null}
           </Box>
 
-          <Box sx={{ p: 2, minHeight: 450, maxHeight: 600, overflowY: 'auto', backgroundColor: 'rgba(0,0,0,0.15)' }}>
-            {!selectedOtherId ? (
-              <Box sx={{ display: 'flex', height: '100%', alignItems: 'center', justifyContent: 'center' }}>
-                <Typography sx={{ opacity: 0.4 }}>Select a user on the left to view messages</Typography>
+          <Box
+            sx={{
+              p: 2,
+              minHeight: 450,
+              maxHeight: 600,
+              overflowY: 'auto',
+              backgroundColor: 'rgba(0,0,0,0.15)',
+            }}
+          >
+            {!selectedId ? (
+              <Box
+                sx={{
+                  height: '100%',
+                  minHeight: 400,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Typography sx={{ opacity: 0.4 }}>No conversation selected</Typography>
               </Box>
             ) : (
               <>
-                {(iBlockedThem || theyBlockedMe) && (
+                {messagingDisabled ? (
                   <Alert severity="warning" sx={{ mb: 2, fontWeight: 700 }}>
-                    {iBlockedThem ? 'You have blocked this user.' : 'This user has blocked you.'} Messaging is disabled.
+                    {iBlockedThem
+                      ? 'You have blocked this user.'
+                      : 'This user has blocked you.'}{' '}
+                    Messaging is disabled.
                   </Alert>
-                )}
-                {loadingThread && thread.length === 0 ? (
-                  <Typography sx={{ opacity: 0.5, textAlign: 'center' }}>Loading messages…</Typography>
-                ) : thread.length === 0 ? (
-                  <Typography sx={{ opacity: 0.5, textAlign: 'center' }}>No messages in this thread yet.</Typography>
+                ) : null}
+
+                {thread.length === 0 ? (
+                  <Typography sx={{ opacity: 0.5, textAlign: 'center', py: 6 }}>
+                    No messages yet. Say hello.
+                  </Typography>
                 ) : (
-                  <Stack spacing={2}>
-                    {threadWithDividers.map((item, idx) => {
-                  if ('type' in item && item.type === 'divider') {
-                    return (
-                      <Box key={`divider-${idx}`} sx={{ display: 'flex', alignItems: 'center', my: 2 }}>
-                        <Box sx={{ flex: 1, height: '1px', backgroundColor: 'rgba(255,255,255,0.08)' }} />
-                        <Typography sx={{ mx: 2, fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                          {item.label}
-                        </Typography>
-                        <Box sx={{ flex: 1, height: '1px', backgroundColor: 'rgba(255,255,255,0.08)' }} />
-                      </Box>
-                    )
-                  }
+                  <Stack spacing={1.5}>
+                    {threadWithSeparators.map((entry, index) => {
+                      if (entry.kind === 'divider') {
+                        return (
+                          <Box
+                            key={`divider-${entry.label}-${index}`}
+                            sx={{ display: 'flex', alignItems: 'center', my: 2 }}
+                          >
+                            <Box sx={{ flex: 1, height: '1px', backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                            <Typography
+                              sx={{
+                                mx: 2,
+                                fontSize: '0.7rem',
+                                color: 'rgba(255,255,255,0.4)',
+                                fontWeight: 600,
+                                letterSpacing: 0.5,
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              {entry.label}
+                            </Typography>
+                            <Box sx={{ flex: 1, height: '1px', backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                          </Box>
+                        )
+                      }
 
-                  const msg = item as ThreadItem
-                  const isMine = msg.receiverUserId === selectedOtherId
+                      const message = entry.message
+                      const mine = message.senderUserId === user?.id
 
-                  return (
-                    <Box
-                      key={msg.id}
-                      sx={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        alignItems: isMine ? 'flex-end' : 'flex-start',
-                      }}
-                    >
-                      <Paper
-                        sx={{
-                          p: '10px 14px',
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          backgroundColor: isMine ? 'primary.dark' : 'background.paper',
-                          color: 'white',
-                          maxWidth: '75%',
-                          position: 'relative',
-                          borderRadius: isMine ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
-                          boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                        }}
-                      >
-                        <Typography sx={{ whiteSpace: 'pre-wrap', fontSize: '0.95rem', lineHeight: 1.4 }}>
-                          {msg.content}
-                        </Typography>
-                        
-                        <Typography 
-                          sx={{ 
-                            fontSize: '0.65rem', 
-                            opacity: 0.5, 
-                            mt: 0.5,
-                            textAlign: isMine ? 'left' : 'right',
-                            display: 'block',
-                            fontWeight: 600
+                      return (
+                        <Box
+                          key={message.id}
+                          sx={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: mine ? 'flex-end' : 'flex-start',
                           }}
                         >
-                          {format24h(new Date(msg.sentAt))}
-                        </Typography>
-                      </Paper>
-                    </Box>
-                  )
-                })}
-              </Stack>
+                          <Paper
+                            sx={{
+                              p: '10px 14px',
+                              border: '1px solid rgba(255,255,255,0.08)',
+                              backgroundColor: mine ? 'primary.dark' : 'background.paper',
+                              maxWidth: '75%',
+                              borderRadius: mine ? '16px 16px 2px 16px' : '16px 16px 16px 2px',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                            }}
+                          >
+                            <Typography sx={{ whiteSpace: 'pre-wrap', fontSize: '0.95rem', lineHeight: 1.4 }}>
+                              {message.content}
+                            </Typography>
+                            <Typography
+                              sx={{
+                                fontSize: '0.65rem',
+                                opacity: 0.5,
+                                mt: 0.5,
+                                textAlign: 'right',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {timeLabel(new Date(message.sentAt))}
+                            </Typography>
+                          </Paper>
+                        </Box>
+                      )
+                    })}
+                    <div ref={bottomRef} />
+                  </Stack>
+                )}
+              </>
             )}
-          </>
-        )}
-      </Box>
+          </Box>
 
-      <Box sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+          <Box sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
             <Stack direction="row" spacing={1} alignItems="flex-end">
               <TextField
                 fullWidth
-                placeholder={(iBlockedThem || theyBlockedMe) ? "Messaging disabled" : "Write a message..."}
-                value={draftContent}
-                onChange={(e) => setDraftContent(e.target.value)}
+                placeholder={messagingDisabled ? 'Messaging is disabled' : 'Write a message…'}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
                 multiline
                 maxRows={6}
-                disabled={!selectedOtherId || sending || iBlockedThem || theyBlockedMe}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
+                disabled={!selectedId || sending || messagingDisabled}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault()
                     void sendMessage()
                   }
                 }}
+                slotProps={{ htmlInput: { 'aria-label': 'Message' } }}
                 sx={{
                   '& .MuiOutlinedInput-root': {
                     borderRadius: 3,
-                    backgroundColor: 'rgba(255,255,255,0.03)'
-                  }
+                    backgroundColor: 'rgba(255,255,255,0.03)',
+                  },
                 }}
               />
               <Button
                 variant="contained"
-                disabled={!selectedOtherId || !draftContent.trim() || sending || iBlockedThem || theyBlockedMe}
+                disabled={!selectedId || !draft.trim() || sending || messagingDisabled}
                 onClick={() => void sendMessage()}
-                sx={{ 
-                  borderRadius: 3, 
-                  height: 48, 
-                  px: 3,
-                  fontWeight: 900
-                }}
+                sx={{ borderRadius: 3, height: 48, px: 3, fontWeight: 900 }}
               >
-                {sending ? '...' : 'Send'}
+                {sending ? '…' : 'Send'}
               </Button>
             </Stack>
           </Box>
         </Paper>
       </Stack>
 
-      {/* Options Menu */}
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-        PaperProps={{
-          sx: {
-            backgroundColor: 'background.paper',
-            border: '1px solid rgba(255,255,255,0.08)',
-            minWidth: 160,
-          }
+        onClose={closeMenu}
+        slotProps={{
+          paper: {
+            sx: {
+              backgroundColor: 'background.paper',
+              border: '1px solid rgba(255,255,255,0.08)',
+              minWidth: 180,
+            },
+          },
         }}
       >
         <MenuItem onClick={viewProfile}>
           <ListItemIcon>
             <PersonIcon fontSize="small" />
           </ListItemIcon>
-          View Profile
+          View profile
         </MenuItem>
+
         <Divider sx={{ opacity: 0.1 }} />
-        <MenuItem onClick={blockUser}>
+
+        <MenuItem onClick={() => void toggleBlock()}>
           <ListItemIcon>
             <BlockIcon fontSize="small" />
           </ListItemIcon>
-          {inbox.find(i => i.otherUserId === menuUserId)?.iBlockedThem ? 'Unblock User' : 'Block User'}
+          {inbox.find((item) => item.otherUserId === menuUserId)?.iBlockedThem
+            ? 'Unblock user'
+            : 'Block user'}
         </MenuItem>
-        <MenuItem onClick={reportUser}>
-          <ListItemIcon>
-            <FlagIcon fontSize="small" />
-          </ListItemIcon>
-          Report User
-        </MenuItem>
-        <Divider sx={{ opacity: 0.1 }} />
-        <MenuItem onClick={handleDeleteChat} sx={{ color: 'error.main' }}>
+
+        <MenuItem onClick={() => void deleteConversation()} sx={{ color: 'error.main' }}>
           <ListItemIcon>
             <DeleteIcon fontSize="small" color="error" />
           </ListItemIcon>
-          Delete Chat
+          Delete conversation
         </MenuItem>
       </Menu>
 
-      <Dialog open={openProfile} onClose={() => setOpenProfile(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontWeight: 900 }}>User Profile</DialogTitle>
-        <DialogContent dividers>
-          {selectedOtherProfile ? (
-            <PublicProfileView profile={selectedOtherProfile} />
-          ) : <Typography>Loading profile...</Typography>}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenProfile(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      <ProfileDialog userId={viewingProfileOf} onClose={() => setViewingProfileOf(null)} />
     </Box>
   )
 }
