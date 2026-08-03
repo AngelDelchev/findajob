@@ -11,7 +11,6 @@ import NotificationsProvider from './components/providers/NotificationsProvider'
 import ToastProvider from './components/providers/ToastProvider'
 import { theme } from './theme'
 import './index.css'
-import './App.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

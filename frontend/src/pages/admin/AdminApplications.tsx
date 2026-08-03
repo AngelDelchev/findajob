@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../../toast'
 import { useConfirm } from '../../confirm'
+import { ListPagination, ListSearch } from '../../components/ListControls'
+import { usePagedList } from '../../usePagedList'
 import { formatDate, formatDateTime } from '../../utils'
 import { APPLICATION_STATUSES } from '../../types'
 import type { ApplicationStatus, JobApplication } from '../../types'
@@ -32,30 +34,24 @@ export default function AdminApplications({ onChanged }: Props) {
   const { showSuccess, showError } = useToast()
   const confirm = useConfirm()
 
-  const [applications, setApplications] = useState<JobApplication[]>([])
   const [selected, setSelected] = useState<JobApplication | null>(null)
-  const [loading, setLoading] = useState(true)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const response = await api.get<JobApplication[]>('/admin/applications')
-      setApplications(response.data)
-    } catch (error) {
-      showError(errorMessage(error, 'Could not load applications.'))
-    } finally {
-      setLoading(false)
-    }
-  }, [showError])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const {
+    items: applications,
+    page,
+    setPage,
+    total,
+    totalPages,
+    loading,
+    applySearch,
+    reload,
+    reloadAfterRemoval,
+  } = usePagedList<JobApplication>('/admin/applications', showError)
 
   const updateStatus = async (id: number, status: ApplicationStatus) => {
     try {
       await api.put(`/admin/applications/${id}/status`, { status })
-      await load()
+      reload()
       await onChanged?.()
       showSuccess('Status updated.')
     } catch (error) {
@@ -77,7 +73,7 @@ export default function AdminApplications({ onChanged }: Props) {
       // Note the plural: this used to call /admin/application/{id}, which does not
       // exist, so deleting an application always failed with a 404.
       await api.delete(`/admin/applications/${application.id}`)
-      await load()
+      reloadAfterRemoval()
       await onChanged?.()
       showSuccess('Application deleted.')
     } catch (error) {
@@ -87,9 +83,18 @@ export default function AdminApplications({ onChanged }: Props) {
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>
-        Applications
-      </Typography>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        spacing={2}
+        sx={{ mb: 2 }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 900 }}>
+          Applications
+        </Typography>
+        <ListSearch placeholder="Search by job, company or applicant" onSearch={applySearch} />
+      </Stack>
 
       <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
         <TableContainer>
@@ -174,6 +179,14 @@ export default function AdminApplications({ onChanged }: Props) {
             </TableBody>
           </Table>
         </TableContainer>
+
+        <ListPagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          noun="application"
+          onChange={setPage}
+        />
       </Paper>
 
       <Dialog open={selected !== null} onClose={() => setSelected(null)} maxWidth="sm" fullWidth>

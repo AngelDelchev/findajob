@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../../toast'
 import { CITIES, COUNTRIES } from '../../constants'
+import ChangePasswordDialog from '../../components/ChangePasswordDialog'
 import { initials } from '../../utils'
 import type { MyProfile } from '../../types'
 import Avatar from '@mui/material/Avatar'
@@ -20,6 +21,7 @@ import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import CameraAltIcon from '@mui/icons-material/CameraAlt'
 import EditIcon from '@mui/icons-material/Edit'
+import LockIcon from '@mui/icons-material/LockOutline'
 
 type Props = {
   profile: MyProfile | null
@@ -32,6 +34,7 @@ export default function ProfileHeader({ profile, onRefresh }: Props) {
   const { showSuccess, showError } = useToast()
 
   const [open, setOpen] = useState(false)
+  const [passwordOpen, setPasswordOpen] = useState(false)
   const [form, setForm] = useState<MyProfile | null>(profile)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState<'avatar' | 'banner' | null>(null)
@@ -222,16 +225,28 @@ export default function ProfileHeader({ profile, onRefresh }: Props) {
             </Typography>
           </Box>
 
-          <Button
-            variant="outlined"
-            startIcon={<EditIcon />}
-            onClick={() => setOpen(true)}
-            sx={{ borderRadius: 20, fontWeight: 800, flexShrink: 0 }}
-          >
-            Edit profile
-          </Button>
+          <Stack direction="row" spacing={1} sx={{ flexShrink: 0, flexWrap: 'wrap', gap: 1 }}>
+            <Button
+              variant="outlined"
+              startIcon={<LockIcon />}
+              onClick={() => setPasswordOpen(true)}
+              sx={{ borderRadius: 20, fontWeight: 800 }}
+            >
+              Change password
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<EditIcon />}
+              onClick={() => setOpen(true)}
+              sx={{ borderRadius: 20, fontWeight: 800 }}
+            >
+              Edit profile
+            </Button>
+          </Stack>
         </Stack>
       </Box>
+
+      <ChangePasswordDialog open={passwordOpen} onClose={() => setPasswordOpen(false)} />
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle sx={{ fontWeight: 900 }}>Edit profile</DialogTitle>

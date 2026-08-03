@@ -92,6 +92,17 @@ export default function Login() {
             }}
           />
 
+          <Box sx={{ textAlign: 'right', mt: -1 }}>
+            <Typography
+              component={RouterLink}
+              to="/forgot-password"
+              variant="body2"
+              sx={{ color: 'primary.main', textDecoration: 'none', fontWeight: 700 }}
+            >
+              Forgot your password?
+            </Typography>
+          </Box>
+
           {error ? <Alert severity="error">{error}</Alert> : null}
 
           <Button

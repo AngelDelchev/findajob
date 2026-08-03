@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../../toast'
 import { useConfirm } from '../../confirm'
 import ProfileDialog from '../../components/ProfileDialog'
+import { ListPagination, ListSearch } from '../../components/ListControls'
+import { usePagedList } from '../../usePagedList'
 import { fullName } from '../../utils'
 import type { AdminUser, Role } from '../../types'
 import Box from '@mui/material/Box'
@@ -35,29 +37,23 @@ export default function AdminUsers({ onChanged }: Props) {
   const { showSuccess, showError } = useToast()
   const confirm = useConfirm()
 
-  const [users, setUsers] = useState<AdminUser[]>([])
-  const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<AdminUser | null>(null)
   const [selectedRoles, setSelectedRoles] = useState<Role[]>([])
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '' })
   const [saving, setSaving] = useState(false)
   const [viewingProfileOf, setViewingProfileOf] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const response = await api.get<AdminUser[]>('/admin/users')
-      setUsers(response.data)
-    } catch (error) {
-      showError(errorMessage(error, 'Could not load users.'))
-    } finally {
-      setLoading(false)
-    }
-  }, [showError])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const {
+    items: users,
+    page,
+    setPage,
+    total,
+    totalPages,
+    loading,
+    applySearch,
+    reload,
+    reloadAfterRemoval,
+  } = usePagedList<AdminUser>('/admin/users', showError)
 
   const openEdit = (user: AdminUser) => {
     setEditing(user)
@@ -84,7 +80,7 @@ export default function AdminUsers({ onChanged }: Props) {
       await api.put(`/admin/users/${editing.id}/roles`, { roles: selectedRoles })
 
       setEditing(null)
-      await load()
+      reload()
       await onChanged?.()
       showSuccess('User updated.')
     } catch (error) {
@@ -97,7 +93,7 @@ export default function AdminUsers({ onChanged }: Props) {
   const toggleDisabled = async (user: AdminUser) => {
     try {
       await api.put(`/admin/users/${user.id}/status`, { disabled: !user.isDisabled })
-      await load()
+      reload()
       await onChanged?.()
       showSuccess(user.isDisabled ? 'User enabled.' : 'User disabled.')
     } catch (error) {
@@ -117,7 +113,7 @@ export default function AdminUsers({ onChanged }: Props) {
 
     try {
       await api.delete(`/admin/users/${user.id}`)
-      await load()
+      reloadAfterRemoval()
       await onChanged?.()
       showSuccess('User deleted.')
     } catch (error) {
@@ -127,9 +123,18 @@ export default function AdminUsers({ onChanged }: Props) {
 
   return (
     <Box>
-      <Typography variant="h6" sx={{ fontWeight: 900, mb: 2 }}>
-        Users
-      </Typography>
+      <Stack
+        direction={{ xs: 'column', sm: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', sm: 'center' }}
+        spacing={2}
+        sx={{ mb: 2 }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 900 }}>
+          Users
+        </Typography>
+        <ListSearch placeholder="Search by name, email or company" onSearch={applySearch} />
+      </Stack>
 
       <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
         <TableContainer>
@@ -213,6 +218,14 @@ export default function AdminUsers({ onChanged }: Props) {
             </TableBody>
           </Table>
         </TableContainer>
+
+        <ListPagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          noun="user"
+          onChange={setPage}
+        />
       </Paper>
 
       <ProfileDialog userId={viewingProfileOf} onClose={() => setViewingProfileOf(null)} />

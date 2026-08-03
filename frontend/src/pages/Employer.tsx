@@ -6,7 +6,8 @@ import EmployerJobsList from './employer/EmployerJobsList'
 import EmployerProfile from './employer/EmployerProfile'
 import FriendsList from './employee/FriendsList'
 import JobFormFields from '../components/JobFormFields'
-import type { JobFormState } from '../components/JobFormFields'
+import { emptyJobForm, toJobRequest } from '../jobForm'
+import type { JobFormState } from '../jobForm'
 import type { JobApplication, JobPosting, MyProfile } from '../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -20,16 +21,6 @@ import Tab from '@mui/material/Tab'
 import Tabs from '@mui/material/Tabs'
 import Typography from '@mui/material/Typography'
 
-const emptyJob: JobFormState = {
-  title: '',
-  company: '',
-  location: '',
-  salary: '$ 0',
-  jobType: 'Full-time',
-  description: '',
-  tags: [],
-}
-
 export default function Employer() {
   const { showSuccess, showError } = useToast()
 
@@ -40,7 +31,7 @@ export default function Employer() {
   const [loading, setLoading] = useState(true)
   const [openCreate, setOpenCreate] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [jobForm, setJobForm] = useState<JobFormState>(emptyJob)
+  const [jobForm, setJobForm] = useState<JobFormState>(emptyJobForm)
   const [formError, setFormError] = useState('')
 
   const load = useCallback(async () => {
@@ -74,7 +65,7 @@ export default function Employer() {
 
   const openCreateDialog = () => {
     setFormError('')
-    setJobForm({ ...emptyJob, company: profile?.companyName ?? '' })
+    setJobForm({ ...emptyJobForm, company: profile?.companyName ?? '' })
     setOpenCreate(true)
   }
 
@@ -88,9 +79,9 @@ export default function Employer() {
 
     setSaving(true)
     try {
-      await api.post('/jobs', jobForm)
+      await api.post('/jobs', toJobRequest(jobForm))
       setOpenCreate(false)
-      setJobForm(emptyJob)
+      setJobForm(emptyJobForm)
       await load()
       showSuccess('Job posted.')
     } catch (error) {

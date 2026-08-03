@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink, useNavigate, useSearchParams } from 'react-router-dom'
 import { api, errorMessage } from '../api'
 import { useAuth } from '../auth'
 import { useToast } from '../toast'
@@ -13,6 +13,8 @@ import Card from '@mui/material/Card'
 import CardContent from '@mui/material/CardContent'
 import Chip from '@mui/material/Chip'
 import CircularProgress from '@mui/material/CircularProgress'
+import Dialog from '@mui/material/Dialog'
+import DialogContent from '@mui/material/DialogContent'
 import Divider from '@mui/material/Divider'
 import Grid from '@mui/material/Grid'
 import MenuItem from '@mui/material/MenuItem'
@@ -22,6 +24,8 @@ import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
+import useMediaQuery from '@mui/material/useMediaQuery'
+import { useTheme } from '@mui/material/styles'
 import SearchIcon from '@mui/icons-material/Search'
 import LocationOnIcon from '@mui/icons-material/LocationOn'
 import BoltIcon from '@mui/icons-material/Bolt'
@@ -29,6 +33,9 @@ import BoltIcon from '@mui/icons-material/Bolt'
 type SearchType = 'jobs' | 'people'
 
 const TRENDING = ['Remote', 'React', 'Frontend', 'Engineer', 'Internship']
+
+const isExpired = (job: JobPosting): boolean =>
+  job.deadline ? new Date(job.deadline) < new Date() : false
 
 const emptyStatus: FriendshipStatus = {
   isFriend: false,
@@ -41,20 +48,43 @@ export default function Home() {
   const { user, hasRole } = useAuth()
   const { showSuccess, showError } = useToast()
   const confirm = useConfirm()
+  const navigate = useNavigate()
 
-  const [searchType, setSearchType] = useState<SearchType>('jobs')
-  const [query, setQuery] = useState('')
-  const [hasSearched, setHasSearched] = useState(false)
+  /*
+   * The detail pane is hidden below `md`, so on a phone selecting a result used to
+   * do nothing at all: the card set state that nothing on screen was rendering.
+   * Below that breakpoint a job now opens its own page and a person opens a dialog.
+   */
+  const theme = useTheme()
+  const isCompact = useMediaQuery(theme.breakpoints.down('md'))
+  const [personDialogOpen, setPersonDialogOpen] = useState(false)
+
+  /*
+   * The search lives in the query string rather than in component state, so a result
+   * page can be linked to, bookmarked and reached with the browser's back button.
+   * Previously all of it was local state: every search produced the same URL, and Back
+   * left the site instead of returning to the previous results.
+   */
+  const [params, setParams] = useSearchParams()
+
+  const searchType: SearchType = params.get('type') === 'people' ? 'people' : 'jobs'
+  const query = params.get('q') ?? ''
+  const page = Math.max(Number(params.get('page') ?? '1') || 1, 1)
+  const hasSearched = params.has('q') || params.has('type')
+
+  // The text field is uncontrolled by the URL while it is being typed in; only
+  // submitting commits it.
+  const [queryInput, setQueryInput] = useState(query)
 
   const [jobs, setJobs] = useState<JobPosting[]>([])
   const [people, setPeople] = useState<PublicProfile[]>([])
   const [selectedJob, setSelectedJob] = useState<JobPosting | null>(null)
   const [selectedPerson, setSelectedPerson] = useState<PublicProfile | null>(null)
 
-  const [page, setPage] = useState(1)
   const [totalPages, setTotalPages] = useState(0)
   const [total, setTotal] = useState(0)
 
+  const [latestJobs, setLatestJobs] = useState<JobPosting[]>([])
   const [savedJobIds, setSavedJobIds] = useState<number[]>([])
   const [friendStatus, setFriendStatus] = useState<FriendshipStatus>(emptyStatus)
   const [loading, setLoading] = useState(false)
@@ -62,42 +92,99 @@ export default function Home() {
 
   const isEmployee = hasRole('Employee')
 
-  const performSearch = useCallback(async (term: string, type: SearchType, nextPage: number) => {
-    setLoading(true)
-    setError('')
+  /** Writes the search into the URL; the effect below reacts to it. */
+  const updateSearch = (next: { q?: string; type?: SearchType; page?: number }) => {
+    setParams(
+      (current) => {
+        const updated = new URLSearchParams(current)
 
-    try {
-      // Both endpoints return a paged envelope now. They used to return every row,
-      // which meant a few hundred full job records on each search.
-      if (type === 'jobs') {
-        const response = await api.get<Paged<JobPosting>>('/jobs', {
-          params: { search: term.trim() || undefined, page: nextPage, pageSize: 20 },
-        })
+        if (next.q !== undefined) updated.set('q', next.q)
+        if (next.type !== undefined) updated.set('type', next.type)
+        updated.set('page', String(next.page ?? 1))
 
-        setJobs(response.data.items)
-        setPeople([])
-        setSelectedJob(response.data.items[0] ?? null)
-        setTotalPages(response.data.totalPages)
-        setTotal(response.data.total)
-      } else {
-        const response = await api.get<Paged<PublicProfile>>('/profiles/search', {
-          params: { search: term.trim() || undefined, page: nextPage, pageSize: 20 },
-        })
+        return updated
+      },
+      { replace: false }
+    )
+  }
 
-        setPeople(response.data.items)
+  // Keep the box in step when the URL changes underneath it, which is what happens
+  // when the back button moves between two searches.
+  useEffect(() => {
+    setQueryInput(query)
+  }, [query])
+
+  useEffect(() => {
+    if (!hasSearched) return
+
+    let cancelled = false
+
+    // Both endpoints return a paged envelope. They used to return every row, which
+    // meant a few hundred full job records on each search.
+    const run = async () => {
+      setLoading(true)
+      setError('')
+
+      const config = { params: { search: query.trim() || undefined, page, pageSize: 20 } }
+
+      try {
+        if (searchType === 'jobs') {
+          const { data } = await api.get<Paged<JobPosting>>('/jobs', config)
+          if (cancelled) return
+
+          setJobs(data.items)
+          setPeople([])
+          setSelectedJob(data.items[0] ?? null)
+          setTotalPages(data.totalPages)
+          setTotal(data.total)
+        } else {
+          const { data } = await api.get<Paged<PublicProfile>>('/profiles/search', config)
+          if (cancelled) return
+
+          setPeople(data.items)
+          setJobs([])
+          setSelectedPerson(data.items[0] ?? null)
+          setTotalPages(data.totalPages)
+          setTotal(data.total)
+        }
+      } catch (err) {
+        if (cancelled) return
+
+        setError(errorMessage(err, 'Could not load results.'))
         setJobs([])
-        setSelectedPerson(response.data.items[0] ?? null)
-        setTotalPages(response.data.totalPages)
-        setTotal(response.data.total)
+        setPeople([])
+      } finally {
+        if (!cancelled) setLoading(false)
       }
-    } catch (err) {
-      setError(errorMessage(err, 'Could not load results.'))
-      setJobs([])
-      setPeople([])
-    } finally {
-      setLoading(false)
     }
-  }, [])
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [hasSearched, searchType, query, page])
+
+  // The most recent postings, shown on the landing page. A job board whose front page
+  // lists nothing until you type gives a first-time visitor nothing to look at.
+  useEffect(() => {
+    if (hasSearched) return
+
+    let cancelled = false
+
+    api
+      .get<Paged<JobPosting>>('/jobs', { params: { page: 1, pageSize: 6 } })
+      .then((response) => {
+        if (!cancelled) setLatestJobs(response.data.items)
+      })
+      .catch(() => {
+        if (!cancelled) setLatestJobs([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [hasSearched])
 
   const loadSavedJobs = useCallback(async () => {
     if (!isEmployee) {
@@ -142,22 +229,43 @@ export default function Home() {
 
   const submitSearch = (event?: React.FormEvent) => {
     event?.preventDefault()
-    setHasSearched(true)
-    setPage(1)
-    void performSearch(query, searchType, 1)
+    updateSearch({ q: queryInput, type: searchType, page: 1 })
   }
 
   const runTrending = (tag: string) => {
-    setQuery(tag)
-    setHasSearched(true)
-    setPage(1)
-    void performSearch(tag, searchType, 1)
+    setQueryInput(tag)
+    updateSearch({ q: tag, type: searchType, page: 1 })
+  }
+
+  const changeType = (type: SearchType) => {
+    updateSearch({ q: queryInput, type, page: 1 })
   }
 
   const changePage = (nextPage: number) => {
-    setPage(nextPage)
-    void performSearch(query, searchType, nextPage)
+    updateSearch({ page: nextPage })
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const openJob = (job: JobPosting) => {
+    if (isCompact) {
+      navigate(`/jobs/${job.id}`)
+      return
+    }
+
+    setSelectedJob(job)
+  }
+
+  const openPerson = (person: PublicProfile) => {
+    setSelectedPerson(person)
+    if (isCompact) setPersonDialogOpen(true)
+  }
+
+  /** Lets a card be reached with the keyboard, the way a button would be. */
+  const activateOnKey = (action: () => void) => (event: React.KeyboardEvent) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      action()
+    }
   }
 
   const saveJob = async (jobId: number) => {
@@ -259,7 +367,7 @@ export default function Home() {
             >
               <Select
                 value={searchType}
-                onChange={(event) => setSearchType(event.target.value as SearchType)}
+                onChange={(event) => changeType(event.target.value as SearchType)}
                 variant="standard"
                 disableUnderline
                 sx={{ ml: 2, fontWeight: 800, minWidth: 80 }}
@@ -274,8 +382,8 @@ export default function Home() {
               <TextField
                 fullWidth
                 variant="standard"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
+                value={queryInput}
+                onChange={(event) => setQueryInput(event.target.value)}
                 placeholder={
                   searchType === 'jobs'
                     ? 'Search by role, skill, or company…'
@@ -328,6 +436,77 @@ export default function Home() {
               />
             ))}
           </Stack>
+
+          {latestJobs.length > 0 ? (
+            <Box sx={{ pt: 4, textAlign: 'left' }}>
+              <Stack
+                direction="row"
+                justifyContent="space-between"
+                alignItems="baseline"
+                sx={{ mb: 2 }}
+              >
+                <Typography variant="h6" sx={{ fontWeight: 900 }}>
+                  Latest openings
+                </Typography>
+                <Button
+                  size="small"
+                  onClick={() => updateSearch({ q: '', type: 'jobs', page: 1 })}
+                  sx={{ fontWeight: 800 }}
+                >
+                  Browse all
+                </Button>
+              </Stack>
+
+              <Stack spacing={1.5}>
+                {latestJobs.map((job) => (
+                  <Card
+                    key={job.id}
+                    component={RouterLink}
+                    to={`/jobs/${job.id}`}
+                    sx={{
+                      display: 'block',
+                      textDecoration: 'none',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      transition: 'border-color 0.2s',
+                      '&:hover': { borderColor: 'primary.main' },
+                    }}
+                  >
+                    <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="baseline"
+                        sx={{ gap: 2 }}
+                      >
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 800 }} noWrap>
+                            {job.title}
+                          </Typography>
+                          <Typography variant="body2" sx={{ opacity: 0.65 }} noWrap>
+                            {[job.company, job.location].filter(Boolean).join(' • ')}
+                          </Typography>
+                        </Box>
+
+                        {job.salary ? (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              color: 'primary.main',
+                              fontWeight: 800,
+                              flexShrink: 0,
+                              display: { xs: 'none', sm: 'block' },
+                            }}
+                          >
+                            {formatSalary(job.salary)}
+                          </Typography>
+                        ) : null}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Stack>
+            </Box>
+          ) : null}
         </Stack>
       </Box>
     )
@@ -336,6 +515,59 @@ export default function Home() {
   // --- Results view -------------------------------------------------------
 
   const hasResults = jobs.length > 0 || people.length > 0
+
+  /**
+   * The selected person's profile and the actions on them. Rendered in the detail
+   * pane on a wide screen and in a dialog on a narrow one, so both routes stay in
+   * step rather than growing two copies of the same buttons.
+   */
+  const personDetail = !selectedPerson ? null : (
+    <Box>
+      <PublicProfileView profile={selectedPerson} />
+
+      {user && user.id !== selectedPerson.id ? (
+        <Stack direction="row" spacing={1} sx={{ px: 1, mt: 3, flexWrap: 'wrap', gap: 1 }}>
+          {friendStatus.isFriend ? (
+            <Button variant="outlined" disabled sx={{ borderRadius: 20, fontWeight: 900 }}>
+              Connected
+            </Button>
+          ) : friendStatus.requestSent ? (
+            <Button variant="outlined" disabled sx={{ borderRadius: 20, fontWeight: 900 }}>
+              Request sent
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              onClick={() => void connect()}
+              sx={{ borderRadius: 20, fontWeight: 900 }}
+            >
+              {friendStatus.requestReceived ? 'Accept request' : 'Connect'}
+            </Button>
+          )}
+
+          <Button
+            variant="outlined"
+            component={RouterLink}
+            to={`/messages?userId=${selectedPerson.id}`}
+            sx={{ borderRadius: 20, fontWeight: 900 }}
+          >
+            Message
+          </Button>
+
+          <Box sx={{ flexGrow: 1 }} />
+
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => void blockPerson()}
+            sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}
+          >
+            Block
+          </Button>
+        </Stack>
+      ) : null}
+    </Box>
+  )
 
   return (
     <Box sx={{ mt: -2 }}>
@@ -360,7 +592,7 @@ export default function Home() {
           <Select
             size="small"
             value={searchType}
-            onChange={(event) => setSearchType(event.target.value as SearchType)}
+            onChange={(event) => changeType(event.target.value as SearchType)}
             sx={{ fontWeight: 800, minWidth: 100 }}
             inputProps={{ 'aria-label': 'What to search for' }}
           >
@@ -371,8 +603,8 @@ export default function Home() {
           <TextField
             fullWidth
             size="small"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            value={queryInput}
+            onChange={(event) => setQueryInput(event.target.value)}
             placeholder={searchType === 'jobs' ? 'Search jobs…' : 'Search people…'}
             slotProps={{
               input: { startAdornment: <SearchIcon sx={{ opacity: 0.5, mr: 1 }} /> },
@@ -409,9 +641,8 @@ export default function Home() {
           <Button
             variant="outlined"
             onClick={() => {
-              setQuery('')
-              setPage(1)
-              void performSearch('', searchType, 1)
+              setQueryInput('')
+              updateSearch({ q: '', page: 1 })
             }}
           >
             Clear search
@@ -431,7 +662,11 @@ export default function Home() {
                   ? jobs.map((job) => (
                       <Card
                         key={job.id}
-                        onClick={() => setSelectedJob(job)}
+                        onClick={() => openJob(job)}
+                        onKeyDown={activateOnKey(() => openJob(job))}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${job.title} at ${job.company}`}
                         sx={{
                           cursor: 'pointer',
                           border: '1px solid',
@@ -499,7 +734,11 @@ export default function Home() {
                   : people.map((person) => (
                       <Card
                         key={person.id}
-                        onClick={() => setSelectedPerson(person)}
+                        onClick={() => openPerson(person)}
+                        onKeyDown={activateOnKey(() => openPerson(person))}
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`${person.firstName} ${person.lastName}`.trim() || 'Profile'}
                         sx={{
                           cursor: 'pointer',
                           border: '1px solid',
@@ -616,14 +855,43 @@ export default function Home() {
                             </Button>
                           ) : null}
 
-                          <Button
-                            variant="contained"
-                            component={RouterLink}
-                            to={user ? `/apply/${selectedJob.id}` : '/login'}
-                            sx={{ fontWeight: 900, px: 4 }}
-                          >
-                            {user ? 'Apply now' : 'Log in to apply'}
-                          </Button>
+                          {/*
+                            Matches the gating on the job page. This used to send every
+                            signed-in visitor to /apply, so an employer or administrator
+                            clicking Apply landed on a permission-denied screen.
+                          */}
+                          {!user ? (
+                            <Button
+                              variant="contained"
+                              component={RouterLink}
+                              to="/login"
+                              sx={{ fontWeight: 900, px: 4 }}
+                            >
+                              Log in to apply
+                            </Button>
+                          ) : !isEmployee ? (
+                            <Button
+                              variant="outlined"
+                              component={RouterLink}
+                              to={`/jobs/${selectedJob.id}`}
+                              sx={{ fontWeight: 900, px: 4 }}
+                            >
+                              View details
+                            </Button>
+                          ) : isExpired(selectedJob) ? (
+                            <Button variant="contained" disabled sx={{ fontWeight: 900, px: 4 }}>
+                              Deadline passed
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="contained"
+                              component={RouterLink}
+                              to={`/apply/${selectedJob.id}`}
+                              sx={{ fontWeight: 900, px: 4 }}
+                            >
+                              Apply now
+                            </Button>
+                          )}
                         </Stack>
                       </Stack>
 
@@ -700,67 +968,22 @@ export default function Home() {
                     <Typography variant="h5">Select a person to see their profile</Typography>
                   </Box>
                 ) : (
-                  <Box>
-                    <PublicProfileView profile={selectedPerson} />
-
-                    {user && user.id !== selectedPerson.id ? (
-                      <Stack
-                        direction="row"
-                        spacing={1}
-                        sx={{ px: 1, mt: 3, flexWrap: 'wrap', gap: 1 }}
-                      >
-                        {friendStatus.isFriend ? (
-                          <Button
-                            variant="outlined"
-                            disabled
-                            sx={{ borderRadius: 20, fontWeight: 900 }}
-                          >
-                            Connected
-                          </Button>
-                        ) : friendStatus.requestSent ? (
-                          <Button
-                            variant="outlined"
-                            disabled
-                            sx={{ borderRadius: 20, fontWeight: 900 }}
-                          >
-                            Request sent
-                          </Button>
-                        ) : (
-                          <Button
-                            variant="contained"
-                            onClick={() => void connect()}
-                            sx={{ borderRadius: 20, fontWeight: 900 }}
-                          >
-                            {friendStatus.requestReceived ? 'Accept request' : 'Connect'}
-                          </Button>
-                        )}
-
-                        <Button
-                          variant="outlined"
-                          component={RouterLink}
-                          to={`/messages?userId=${selectedPerson.id}`}
-                          sx={{ borderRadius: 20, fontWeight: 900 }}
-                        >
-                          Message
-                        </Button>
-
-                        <Box sx={{ flexGrow: 1 }} />
-
-                        <Button
-                          size="small"
-                          variant="text"
-                          onClick={() => void blockPerson()}
-                          sx={{ fontWeight: 700, color: 'rgba(255,255,255,0.5)' }}
-                        >
-                          Block
-                        </Button>
-                      </Stack>
-                    ) : null}
-                  </Box>
+                  personDetail
                 )}
               </Paper>
             </Grid>
           </Grid>
+
+          {/* Below `md` the pane above is hidden, so the profile opens here instead. */}
+          <Dialog
+            open={personDialogOpen && isCompact}
+            onClose={() => setPersonDialogOpen(false)}
+            fullWidth
+            maxWidth="sm"
+            scroll="body"
+          >
+            <DialogContent>{personDetail}</DialogContent>
+          </Dialog>
         </>
       )}
     </Box>

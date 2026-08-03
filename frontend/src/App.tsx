@@ -18,6 +18,8 @@ import NotFound from './pages/NotFound'
 const Register = lazy(() => import('./pages/Register'))
 const RegisterEmployer = lazy(() => import('./pages/RegisterEmployer'))
 const ConfirmEmail = lazy(() => import('./pages/ConfirmEmail'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
 const Admin = lazy(() => import('./pages/Admin'))
 const Employee = lazy(() => import('./pages/Employee'))
 const Employer = lazy(() => import('./pages/Employer'))
@@ -44,6 +46,8 @@ export default function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/register/employer" element={<RegisterEmployer />} />
           <Route path="/confirm-email" element={<ConfirmEmail />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/jobs/:id" element={<JobDetails />} />
 
           {/* Any signed-in user */}

@@ -98,6 +98,24 @@ public class JobServiceTests : IAsyncLifetime, IDisposable
         Assert.Equal(0, (await _service.SearchJobsAsync("nothing-matches")).Total);
     }
 
+    /// <summary>
+    /// The search builds a <c>LIKE</c> pattern, so <c>%</c> and <c>_</c> in what somebody
+    /// typed have to be escaped. Unescaped, searching for a single "%" matched the whole
+    /// table and "_" matched every posting with at least one character in the field.
+    /// </summary>
+    [Fact]
+    public async Task SearchJobsAsync_TreatsWildcardCharactersAsOrdinaryText()
+    {
+        await _service.CreateJobAsync(NewJob(title: "Engineer"));
+        await _service.CreateJobAsync(NewJob(title: "100% Remote Engineer"));
+
+        var percent = await _service.SearchJobsAsync("%");
+        Assert.Equal("100% Remote Engineer", Assert.Single(percent.Items).Title);
+
+        // No posting contains an underscore, so this must find nothing rather than all.
+        Assert.Equal(0, (await _service.SearchJobsAsync("_")).Total);
+    }
+
     [Fact]
     public async Task SearchJobsAsync_ReturnsRequestedPageAndReportsTheTotal()
     {
@@ -138,6 +156,87 @@ public class JobServiceTests : IAsyncLifetime, IDisposable
 
         var loaded = await _service.GetJobByIdAsync(job.Id);
         Assert.Equal(["React"], loaded!.Tags);
+    }
+
+    /// <summary>
+    /// Every writable field has to be carried onto the stored row. A field that
+    /// <see cref="JobService.UpdateJobAsync"/> forgets to copy is silently dropped on
+    /// every save, which is how the extended fields used to disappear.
+    /// </summary>
+    [Fact]
+    public async Task UpdateJobAsync_CopiesEveryWritableFieldOntoTheStoredPosting()
+    {
+        var job = await _service.CreateJobAsync(NewJob());
+        var deadline = new DateTime(2027, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        job.Title = "Staff Engineer";
+        job.Company = "Globex";
+        job.CompanyDescription = "We make things.";
+        job.Description = "A longer description.";
+        job.Location = "Varna, Bulgaria";
+        job.Salary = "$ 90000";
+        job.JobType = "Contract";
+        job.WorkMode = "Hybrid";
+        job.EmploymentType = "Temporary";
+        job.SeniorityLevel = "Lead";
+        job.Requirements = "Five years of experience.";
+        job.Responsibilities = "Ship things.";
+        job.Benefits = "Health insurance.";
+        job.Deadline = deadline;
+
+        Assert.True(await _service.UpdateJobAsync(job, "owner-1"));
+
+        var loaded = await _service.GetJobByIdAsync(job.Id);
+
+        Assert.NotNull(loaded);
+        Assert.Equal("Staff Engineer", loaded.Title);
+        Assert.Equal("Globex", loaded.Company);
+        Assert.Equal("We make things.", loaded.CompanyDescription);
+        Assert.Equal("A longer description.", loaded.Description);
+        Assert.Equal("Varna, Bulgaria", loaded.Location);
+        Assert.Equal("$ 90000", loaded.Salary);
+        Assert.Equal("Contract", loaded.JobType);
+        Assert.Equal("Hybrid", loaded.WorkMode);
+        Assert.Equal("Temporary", loaded.EmploymentType);
+        Assert.Equal("Lead", loaded.SeniorityLevel);
+        Assert.Equal("Five years of experience.", loaded.Requirements);
+        Assert.Equal("Ship things.", loaded.Responsibilities);
+        Assert.Equal("Health insurance.", loaded.Benefits);
+        Assert.Equal(deadline, loaded.Deadline);
+    }
+
+    /// <summary>
+    /// An update replaces the whole posting rather than patching it, so a caller that
+    /// omits a field clears it. That is the contract every editor has to satisfy: the
+    /// job form must round-trip all of these, and the admin list endpoint must return
+    /// them, or opening a posting and saving it blanks whatever was left out.
+    /// </summary>
+    [Fact]
+    public async Task UpdateJobAsync_ClearsFieldsThatTheCallerLeftUnset()
+    {
+        var job = await _service.CreateJobAsync(NewJob());
+
+        job.Requirements = "Five years of experience.";
+        job.Benefits = "Health insurance.";
+        job.Deadline = new DateTime(2027, 3, 1, 0, 0, 0, DateTimeKind.Utc);
+        await _service.UpdateJobAsync(job, "owner-1");
+
+        // A second update built the way an incomplete form would build it.
+        var partial = new JobPosting
+        {
+            Id = job.Id,
+            Title = job.Title,
+            Description = job.Description,
+            Tags = [],
+        };
+
+        Assert.True(await _service.UpdateJobAsync(partial, "owner-1"));
+
+        var loaded = await _service.GetJobByIdAsync(job.Id);
+
+        Assert.Equal(string.Empty, loaded!.Requirements);
+        Assert.Equal(string.Empty, loaded.Benefits);
+        Assert.Null(loaded.Deadline);
     }
 
     [Fact]

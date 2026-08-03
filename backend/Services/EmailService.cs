@@ -45,30 +45,65 @@ public sealed class EmailService : IEmailService
         var baseUrl = _appOptions.FrontendBaseUrl.TrimEnd('/');
         var confirmationLink = $"{baseUrl}/confirm-email?token={Uri.EscapeDataString(token)}";
 
-        var templatePath = Path.Combine(
-            _environment.ContentRootPath,
-            "EmailTemplates",
-            "ConfirmationEmail.html"
+        var body = await RenderAsync(
+            "ConfirmationEmail.html",
+            "{{confirmation_link}}",
+            confirmationLink,
+            $"""
+            <h1>Welcome to findajob!</h1>
+            <p>Please confirm your email address by following the link below:</p>
+            <p><a href="{confirmationLink}">{confirmationLink}</a></p>
+            <p>If you did not create this account you can safely ignore this email.</p>
+            """
         );
 
-        string body;
-        if (File.Exists(templatePath))
+        await SendEmailAsync(to, "Confirm your email - findajob", body);
+    }
+
+    public async Task SendPasswordResetEmailAsync(string to, string token)
+    {
+        var baseUrl = _appOptions.FrontendBaseUrl.TrimEnd('/');
+        var resetLink =
+            $"{baseUrl}/reset-password"
+            + $"?email={Uri.EscapeDataString(to)}"
+            + $"&token={Uri.EscapeDataString(token)}";
+
+        var body = await RenderAsync(
+            "PasswordResetEmail.html",
+            "{{reset_link}}",
+            resetLink,
+            $"""
+            <h1>Reset your password</h1>
+            <p>Follow the link below to choose a new password:</p>
+            <p><a href="{resetLink}">{resetLink}</a></p>
+            <p>If you did not ask for this you can safely ignore this email; your
+            password will not change.</p>
+            """
+        );
+
+        await SendEmailAsync(to, "Reset your password - findajob", body);
+    }
+
+    /// <summary>
+    /// Fills in a bundled template, falling back to plain markup when the file is not
+    /// where it should be. The templates are copied to the output directory by the
+    /// project file, but a missing one should degrade rather than fail the request.
+    /// </summary>
+    private async Task<string> RenderAsync(
+        string templateName,
+        string placeholder,
+        string value,
+        string fallback
+    )
+    {
+        var path = Path.Combine(_environment.ContentRootPath, "EmailTemplates", templateName);
+
+        if (!File.Exists(path))
         {
-            body = (await File.ReadAllTextAsync(templatePath)).Replace(
-                "{{confirmation_link}}",
-                confirmationLink
-            );
-        }
-        else
-        {
-            body = $"""
-                <h1>Welcome to findajob!</h1>
-                <p>Please confirm your email address by following the link below:</p>
-                <p><a href="{confirmationLink}">{confirmationLink}</a></p>
-                <p>If you did not create this account you can safely ignore this email.</p>
-                """;
+            _logger.LogWarning("Email template {Template} is missing; sending plain markup.", templateName);
+            return fallback;
         }
 
-        await SendEmailAsync(to, "Confirm your email - findajob", body);
+        return (await File.ReadAllTextAsync(path)).Replace(placeholder, value);
     }
 }

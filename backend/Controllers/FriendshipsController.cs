@@ -260,6 +260,11 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> RejectRequest(int id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
         var request = await _context.FriendRequests.FindAsync(id);
 
         if (request is null || request.ReceiverId != userId)
@@ -277,6 +282,11 @@ public class FriendshipsController : ControllerBase
     public async Task<IActionResult> CancelRequest(int id)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+        {
+            return Unauthorized();
+        }
+
         var request = await _context.FriendRequests.FindAsync(id);
 
         if (request is null || (request.SenderId != userId && request.ReceiverId != userId))

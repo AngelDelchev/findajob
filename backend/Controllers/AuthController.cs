@@ -22,6 +22,12 @@ public class AuthController : ControllerBase
 
     private const string InvalidCredentialsMessage = "Invalid credentials.";
 
+    private const string ResetRequestedMessage =
+        "If that address has an account, a link to reset the password is on its way.";
+
+    private const string InvalidResetLinkMessage =
+        "This password reset link is no longer valid. Please request a new one.";
+
     private readonly SignInManager<ApplicationUser> _signInManager;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ApplicationDbContext _context;
@@ -289,6 +295,140 @@ public class AuthController : ControllerBase
         return Ok(new { message = "Login successful.", user = await BuildCurrentUserAsync(user) });
     }
 
+    /// <summary>
+    /// Starts a password reset.
+    ///
+    /// Answers the same way whether or not the address is registered, for the same
+    /// reason <see cref="Register"/> does: otherwise this endpoint tells anyone who
+    /// asks which addresses hold an account here.
+    /// </summary>
+    [HttpPost("forgot-password")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        var email = request.Email.Trim();
+        var user = await _userManager.FindByEmailAsync(email);
+
+        if (user is null)
+        {
+            _logger.LogInformation("Password reset requested for an address with no account.");
+            return Ok(new { message = ResetRequestedMessage });
+        }
+
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+
+        try
+        {
+            await _emailService.SendPasswordResetEmailAsync(user.Email!, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Could not send a password reset email.");
+        }
+
+        // Same reasoning as the registration flow: without a local SMTP server the link
+        // is otherwise unreachable, so the feature could not be demonstrated.
+        if (_environment.IsDevelopment())
+        {
+            return Ok(new { message = ResetRequestedMessage, developmentToken = token });
+        }
+
+        return Ok(new { message = ResetRequestedMessage });
+    }
+
+    /// <summary>
+    /// Completes a password reset.
+    ///
+    /// A successful reset rotates the security stamp, which signs out every session the
+    /// account had. That is the behaviour you want: if the reset happened because
+    /// somebody else had the old password, their session dies with it.
+    /// </summary>
+    [HttpPost("reset-password")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (request.Password != request.ConfirmPassword)
+        {
+            return BadRequest(new { message = "Passwords do not match." });
+        }
+
+        var user = await _userManager.FindByEmailAsync(request.Email.Trim());
+
+        // An unknown address and a bad token are reported identically, so this cannot be
+        // used to probe for accounts either.
+        if (user is null)
+        {
+            return BadRequest(new { message = InvalidResetLinkMessage });
+        }
+
+        var result = await _userManager.ResetPasswordAsync(user, request.Token, request.Password);
+
+        if (!result.Succeeded)
+        {
+            if (result.Errors.Any(e => e.Code == "InvalidToken"))
+            {
+                return BadRequest(new { message = InvalidResetLinkMessage });
+            }
+
+            return BadRequest(new
+            {
+                message = "Password does not meet the requirements.",
+                errors = result.Errors.Select(e => e.Description),
+            });
+        }
+
+        // Somebody who reset their password because they were locked out should not stay
+        // locked out afterwards.
+        await _userManager.SetLockoutEndDateAsync(user, null);
+        await _userManager.ResetAccessFailedCountAsync(user);
+
+        return Ok(new { message = "Your password has been changed. You can now log in." });
+    }
+
+    /// <summary>Changes the signed-in user's own password.</summary>
+    [Authorize]
+    [HttpPost("change-password")]
+    [EnableRateLimiting("auth")]
+    public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            return BadRequest(new { message = "Passwords do not match." });
+        }
+
+        var user = await _userManager.GetUserAsync(User);
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        var result = await _userManager.ChangePasswordAsync(
+            user,
+            request.CurrentPassword,
+            request.NewPassword
+        );
+
+        if (!result.Succeeded)
+        {
+            if (result.Errors.Any(e => e.Code == "PasswordMismatch"))
+            {
+                return BadRequest(new { message = "Your current password is not correct." });
+            }
+
+            return BadRequest(new
+            {
+                message = "Password does not meet the requirements.",
+                errors = result.Errors.Select(e => e.Description),
+            });
+        }
+
+        // Changing a password rotates the security stamp, which would otherwise sign the
+        // user out of the tab they are sitting in. Every other session still ends.
+        await _signInManager.RefreshSignInAsync(user);
+
+        return Ok(new { message = "Your password has been changed." });
+    }
+
     [Authorize]
     [HttpPost("logout")]
     public async Task<IActionResult> Logout()
@@ -420,5 +560,42 @@ public class AuthController : ControllerBase
 
         [Required]
         public string Password { get; set; } = "";
+    }
+
+    public class ForgotPasswordRequest
+    {
+        [Required]
+        [EmailAddress]
+        [MaxLength(256)]
+        public string Email { get; set; } = "";
+    }
+
+    public class ResetPasswordRequest
+    {
+        [Required]
+        [EmailAddress]
+        [MaxLength(256)]
+        public string Email { get; set; } = "";
+
+        [Required]
+        public string Token { get; set; } = "";
+
+        [Required]
+        public string Password { get; set; } = "";
+
+        [Required]
+        public string ConfirmPassword { get; set; } = "";
+    }
+
+    public class ChangePasswordRequest
+    {
+        [Required]
+        public string CurrentPassword { get; set; } = "";
+
+        [Required]
+        public string NewPassword { get; set; } = "";
+
+        [Required]
+        public string ConfirmPassword { get; set; } = "";
     }
 }

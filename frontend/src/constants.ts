@@ -37,6 +37,10 @@ export const JOB_TYPES = [
 
 export const WORK_MODES = ['Remote', 'On-site', 'Hybrid'] as const
 
+export const EMPLOYMENT_TYPES = ['Permanent', 'Temporary'] as const
+
+export const SENIORITY_LEVELS = ['Junior', 'Mid', 'Senior', 'Lead'] as const
+
 export const CURRENCIES = ['$', '€', '£', 'BGN'] as const
 
 export const COMPANY_SIZES = [

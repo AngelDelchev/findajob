@@ -210,14 +210,33 @@ export type AdminUser = {
   isDisabled: boolean
 }
 
+/** An employer a posting can be assigned to, from `/api/admin/employers`. */
+export type AdminEmployer = {
+  id: string
+  email: string
+  companyName: string | null
+  firstName: string
+  lastName: string
+}
+
 export type AdminJob = {
   id: number
   title: string
+  ownerId: string
+  ownerCompany: string
   company: string
+  companyDescription: string
   location: string
   salary: string
   jobType: string
+  workMode: string
+  employmentType: string
+  seniorityLevel: string
   description: string
+  requirements: string
+  responsibilities: string
+  benefits: string
+  deadline: string | null
   isDeleted: boolean
   createdAt: string
   tags: string[]

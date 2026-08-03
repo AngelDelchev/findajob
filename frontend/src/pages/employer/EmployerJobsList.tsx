@@ -5,7 +5,8 @@ import { useToast } from '../../toast'
 import { useConfirm } from '../../confirm'
 import { formatSalary } from '../../utils'
 import JobFormFields from '../../components/JobFormFields'
-import type { JobFormState } from '../../components/JobFormFields'
+import { emptyJobForm, jobFormFrom, toJobRequest } from '../../jobForm'
+import type { JobFormState } from '../../jobForm'
 import type { JobPosting } from '../../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
@@ -32,28 +33,13 @@ export default function EmployerJobsList({ jobs, onRefresh }: Props) {
   const [editingId, setEditingId] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [form, setForm] = useState<JobFormState>({
-    title: '',
-    company: '',
-    description: '',
-    location: '',
-    salary: '$ 0',
-    jobType: 'Full-time',
-    tags: [],
-  })
+  const [form, setForm] = useState<JobFormState>(emptyJobForm)
 
   const openEdit = (job: JobPosting) => {
     setError('')
     setEditingId(job.id)
-    setForm({
-      title: job.title ?? '',
-      company: job.company ?? '',
-      description: job.description ?? '',
-      location: job.location ?? '',
-      salary: job.salary || '$ 0',
-      jobType: job.jobType ?? 'Full-time',
-      tags: job.tags ?? [],
-    })
+    // Every field is copied across, because saving replaces the whole posting.
+    setForm(jobFormFrom(job))
     setOpen(true)
   }
 
@@ -67,7 +53,7 @@ export default function EmployerJobsList({ jobs, onRefresh }: Props) {
 
     setSaving(true)
     try {
-      await api.put(`/jobs/${editingId}`, form)
+      await api.put(`/jobs/${editingId}`, toJobRequest(form))
       setOpen(false)
       await onRefresh()
       showSuccess('Job updated.')

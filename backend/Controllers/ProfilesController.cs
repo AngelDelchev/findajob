@@ -169,12 +169,19 @@ public class ProfilesController : ControllerBase
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var term = search.Trim().ToLower();
+            var pattern = SearchPattern.Contains(search);
+
             query = query.Where(u =>
-                u.FirstName.ToLower().Contains(term)
-                || u.LastName.ToLower().Contains(term)
-                || (u.CompanyName != null && u.CompanyName.ToLower().Contains(term))
-                || (u.ProfessionalTitle != null && u.ProfessionalTitle.ToLower().Contains(term))
+                EF.Functions.Like(u.FirstName, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(u.LastName, pattern, SearchPattern.Escape)
+                || (
+                    u.CompanyName != null
+                    && EF.Functions.Like(u.CompanyName, pattern, SearchPattern.Escape)
+                )
+                || (
+                    u.ProfessionalTitle != null
+                    && EF.Functions.Like(u.ProfessionalTitle, pattern, SearchPattern.Escape)
+                )
             );
         }
 
@@ -245,7 +252,7 @@ public class ProfilesController : ControllerBase
     // --- Experience ---------------------------------------------------------
 
     [HttpPost("experience")]
-    public async Task<IActionResult> AddExperience([FromBody] Experience experience)
+    public async Task<IActionResult> AddExperience([FromBody] AddExperienceRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
@@ -253,8 +260,16 @@ public class ProfilesController : ControllerBase
             return Unauthorized();
         }
 
-        experience.Id = 0;
-        experience.UserId = userId;
+        var experience = new Experience
+        {
+            UserId = userId,
+            Title = request.Title.Trim(),
+            Company = request.Company.Trim(),
+            StartDate = request.StartDate.Trim(),
+            EndDate = request.IsCurrent ? null : request.EndDate?.Trim(),
+            IsCurrent = request.IsCurrent,
+            Description = request.Description.Trim(),
+        };
 
         _context.Experiences.Add(experience);
         await _context.SaveChangesAsync();
@@ -283,7 +298,7 @@ public class ProfilesController : ControllerBase
     // --- Education ----------------------------------------------------------
 
     [HttpPost("education")]
-    public async Task<IActionResult> AddEducation([FromBody] Education education)
+    public async Task<IActionResult> AddEducation([FromBody] AddEducationRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
@@ -291,8 +306,15 @@ public class ProfilesController : ControllerBase
             return Unauthorized();
         }
 
-        education.Id = 0;
-        education.UserId = userId;
+        var education = new Education
+        {
+            UserId = userId,
+            School = request.School.Trim(),
+            Degree = request.Degree.Trim(),
+            FieldOfStudy = request.FieldOfStudy.Trim(),
+            StartYear = request.StartYear.Trim(),
+            EndYear = request.EndYear?.Trim(),
+        };
 
         _context.Educations.Add(education);
         await _context.SaveChangesAsync();
@@ -321,7 +343,7 @@ public class ProfilesController : ControllerBase
     // --- Skills -------------------------------------------------------------
 
     [HttpPost("skill")]
-    public async Task<IActionResult> AddSkill([FromBody] Skill skill)
+    public async Task<IActionResult> AddSkill([FromBody] AddSkillRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId))
@@ -329,7 +351,7 @@ public class ProfilesController : ControllerBase
             return Unauthorized();
         }
 
-        var name = skill.Name.Trim();
+        var name = request.Name.Trim();
         if (string.IsNullOrEmpty(name))
         {
             return BadRequest(new { message = "A skill name is required." });
@@ -479,6 +501,62 @@ public class ProfilesController : ControllerBase
         }
 
         return Ok(new { message = $"{folder} updated.", url = $"/uploads/{folder}/{fileName}" });
+    }
+
+    /*
+     * These three used to bind straight to the entities. `Id` and `UserId` were
+     * overwritten afterwards so nothing could be hijacked, but no length was ever
+     * checked, which left the only write paths in the application that would accept a
+     * megabyte of text into a database column. Every other endpoint here validates
+     * through a request model, so these do too.
+     */
+
+    public class AddExperienceRequest
+    {
+        [Required]
+        [MaxLength(150)]
+        public string Title { get; set; } = "";
+
+        [Required]
+        [MaxLength(150)]
+        public string Company { get; set; } = "";
+
+        [MaxLength(40)]
+        public string StartDate { get; set; } = "";
+
+        [MaxLength(40)]
+        public string? EndDate { get; set; }
+
+        public bool IsCurrent { get; set; }
+
+        [MaxLength(2000)]
+        public string Description { get; set; } = "";
+    }
+
+    public class AddEducationRequest
+    {
+        [Required]
+        [MaxLength(200)]
+        public string School { get; set; } = "";
+
+        [MaxLength(150)]
+        public string Degree { get; set; } = "";
+
+        [MaxLength(150)]
+        public string FieldOfStudy { get; set; } = "";
+
+        [MaxLength(20)]
+        public string StartYear { get; set; } = "";
+
+        [MaxLength(20)]
+        public string? EndYear { get; set; }
+    }
+
+    public class AddSkillRequest
+    {
+        [Required]
+        [MaxLength(80)]
+        public string Name { get; set; } = "";
     }
 
     public class UpdateProfileRequest

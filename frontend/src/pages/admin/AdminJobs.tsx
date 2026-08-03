@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../../api'
 import { useToast } from '../../toast'
 import { useConfirm } from '../../confirm'
+import { ListPagination, ListSearch } from '../../components/ListControls'
+import { usePagedList } from '../../usePagedList'
 import { formatSalary } from '../../utils'
 import JobFormFields from '../../components/JobFormFields'
-import type { JobFormState } from '../../components/JobFormFields'
-import type { AdminJob } from '../../types'
+import { emptyJobForm, jobFormFrom, toJobRequest } from '../../jobForm'
+import type { JobFormState } from '../../jobForm'
+import type { AdminEmployer, AdminJob } from '../../types'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Chip from '@mui/material/Chip'
@@ -13,25 +16,17 @@ import Dialog from '@mui/material/Dialog'
 import DialogActions from '@mui/material/DialogActions'
 import DialogContent from '@mui/material/DialogContent'
 import DialogTitle from '@mui/material/DialogTitle'
+import MenuItem from '@mui/material/MenuItem'
 import Paper from '@mui/material/Paper'
 import Stack from '@mui/material/Stack'
 import Table from '@mui/material/Table'
+import TextField from '@mui/material/TextField'
 import TableBody from '@mui/material/TableBody'
 import TableCell from '@mui/material/TableCell'
 import TableContainer from '@mui/material/TableContainer'
 import TableHead from '@mui/material/TableHead'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
-
-const emptyJob: JobFormState = {
-  title: '',
-  company: '',
-  description: '',
-  location: '',
-  salary: '$ 0',
-  jobType: 'Full-time',
-  tags: [],
-}
 
 type Props = {
   onChanged?: () => void | Promise<void>
@@ -41,52 +36,69 @@ export default function AdminJobs({ onChanged }: Props) {
   const { showSuccess, showError } = useToast()
   const confirm = useConfirm()
 
-  const [jobs, setJobs] = useState<AdminJob[]>([])
-  const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState(0)
-  const [form, setForm] = useState<JobFormState>(emptyJob)
+  const [form, setForm] = useState<JobFormState>(emptyJobForm)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const response = await api.get<AdminJob[]>('/admin/jobs')
-      setJobs(response.data)
-    } catch (err) {
-      showError(errorMessage(err, 'Could not load jobs.'))
-    } finally {
-      setLoading(false)
-    }
-  }, [showError])
+  // Which employer the posting belongs to. Creating from this screen used to make the
+  // administrator the owner, so the posting showed their company and never reached the
+  // real employer's dashboard.
+  const [employers, setEmployers] = useState<AdminEmployer[]>([])
+  const [ownerId, setOwnerId] = useState('')
+
+  const {
+    items: jobs,
+    page,
+    setPage,
+    total,
+    totalPages,
+    loading,
+    applySearch,
+    reload,
+    reloadAfterRemoval,
+  } = usePagedList<AdminJob>('/admin/jobs', showError)
 
   useEffect(() => {
-    void load()
-  }, [load])
+    let cancelled = false
+
+    api
+      .get<AdminEmployer[]>('/admin/employers')
+      .then((response) => {
+        if (!cancelled) setEmployers(response.data)
+      })
+      .catch(() => {
+        if (!cancelled) setEmployers([])
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const employerLabel = (employer: AdminEmployer) =>
+    employer.companyName?.trim() ||
+    `${employer.firstName} ${employer.lastName}`.trim() ||
+    employer.email
 
   const create = () => {
     setError('')
     setEditingId(0)
-    setForm(emptyJob)
+    setForm(emptyJobForm)
+    setOwnerId(employers[0]?.id ?? '')
     setOpen(true)
   }
 
   const edit = (job: AdminJob) => {
     setError('')
     setEditingId(job.id)
-    setForm({
-      title: job.title ?? '',
-      company: job.company ?? '',
-      description: job.description ?? '',
-      location: job.location ?? '',
-      salary: job.salary || '$ 0',
-      jobType: job.jobType ?? 'Full-time',
-      // The list endpoint now returns the real tags. It used to project the
-      // [NotMapped] Tags property, which was always empty, so saving from this
-      // dialog silently removed every tag the posting had.
-      tags: job.tags ?? [],
-    })
+    setOwnerId(job.ownerId)
+    // The list endpoint returns every writable field, tags included. It used to
+    // return only a handful, and project the [NotMapped] Tags property for those,
+    // so saving from this dialog wiped the tags along with the requirements,
+    // responsibilities, benefits and deadline.
+    setForm(jobFormFrom(job))
     setOpen(true)
   }
 
@@ -98,16 +110,23 @@ export default function AdminJobs({ onChanged }: Props) {
       return
     }
 
+    if (!ownerId) {
+      setError('Choose the employer this posting belongs to.')
+      return
+    }
+
     setSaving(true)
     try {
+      const body = { ...toJobRequest(form), ownerId }
+
       if (editingId === 0) {
-        await api.post('/jobs', form)
+        await api.post('/jobs', body)
       } else {
-        await api.put(`/jobs/${editingId}`, form)
+        await api.put(`/jobs/${editingId}`, body)
       }
 
       setOpen(false)
-      await load()
+      reload()
       await onChanged?.()
       showSuccess(editingId === 0 ? 'Job created.' : 'Job updated.')
     } catch (err) {
@@ -132,7 +151,7 @@ export default function AdminJobs({ onChanged }: Props) {
 
     try {
       await api.put(`/admin/jobs/${job.id}/visibility`, { isDeleted: archiving })
-      await load()
+      reload()
       await onChanged?.()
       showSuccess(archiving ? 'Job archived.' : 'Job restored.')
     } catch (err) {
@@ -152,7 +171,7 @@ export default function AdminJobs({ onChanged }: Props) {
 
     try {
       await api.delete(`/admin/jobs/${job.id}`)
-      await load()
+      reloadAfterRemoval()
       await onChanged?.()
       showSuccess('Job deleted.')
     } catch (err) {
@@ -162,13 +181,28 @@ export default function AdminJobs({ onChanged }: Props) {
 
   return (
     <Box>
-      <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
+      <Stack
+        direction={{ xs: 'column', md: 'row' }}
+        justifyContent="space-between"
+        alignItems={{ xs: 'stretch', md: 'center' }}
+        spacing={2}
+        sx={{ mb: 2 }}
+      >
         <Typography variant="h6" sx={{ fontWeight: 900 }}>
           Jobs
         </Typography>
-        <Button variant="contained" onClick={create} sx={{ fontWeight: 800 }}>
-          Create job
-        </Button>
+
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} alignItems="center" sx={{ flex: 1 }}>
+          <ListSearch placeholder="Search by title, company or location" onSearch={applySearch} />
+          <Button
+            variant="contained"
+            onClick={create}
+            sx={{ fontWeight: 800, flexShrink: 0 }}
+            disabled={employers.length === 0}
+          >
+            Create job
+          </Button>
+        </Stack>
       </Stack>
 
       <Paper sx={{ border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
@@ -179,6 +213,7 @@ export default function AdminJobs({ onChanged }: Props) {
                 <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>ID</TableCell>
                 <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Title</TableCell>
                 <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Company</TableCell>
+                <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Owner</TableCell>
                 <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Type</TableCell>
                 <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Salary</TableCell>
                 <TableCell sx={{ color: 'primary.main', fontWeight: 800 }}>Tags</TableCell>
@@ -192,13 +227,13 @@ export default function AdminJobs({ onChanged }: Props) {
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={8} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
+                  <TableCell colSpan={9} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
                     Loading…
                   </TableCell>
                 </TableRow>
               ) : jobs.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
+                  <TableCell colSpan={9} sx={{ py: 4, textAlign: 'center', opacity: 0.6 }}>
                     No jobs found.
                   </TableCell>
                 </TableRow>
@@ -208,6 +243,7 @@ export default function AdminJobs({ onChanged }: Props) {
                     <TableCell>{job.id}</TableCell>
                     <TableCell sx={{ fontWeight: 900 }}>{job.title}</TableCell>
                     <TableCell>{job.company}</TableCell>
+                    <TableCell sx={{ opacity: 0.75 }}>{job.ownerCompany || '—'}</TableCell>
                     <TableCell>
                       <Chip
                         label={job.jobType}
@@ -275,6 +311,14 @@ export default function AdminJobs({ onChanged }: Props) {
             </TableBody>
           </Table>
         </TableContainer>
+
+        <ListPagination
+          page={page}
+          totalPages={totalPages}
+          total={total}
+          noun="job"
+          onChange={setPage}
+        />
       </Paper>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
@@ -282,6 +326,23 @@ export default function AdminJobs({ onChanged }: Props) {
           {editingId === 0 ? 'Create job' : `Edit job #${editingId}`}
         </DialogTitle>
         <DialogContent dividers>
+          <TextField
+            select
+            fullWidth
+            required
+            label="Employer"
+            value={ownerId}
+            onChange={(event) => setOwnerId(event.target.value)}
+            helperText="The account this posting belongs to and appears on the dashboard of."
+            sx={{ mt: 1 }}
+          >
+            {employers.map((employer) => (
+              <MenuItem key={employer.id} value={employer.id}>
+                {employerLabel(employer)}
+              </MenuItem>
+            ))}
+          </TextField>
+
           <JobFormFields form={form} setForm={setForm} />
           {error ? (
             <Typography color="error" sx={{ fontWeight: 700, mt: 2 }}>

@@ -41,12 +41,15 @@ page application.
 - Direct messaging with per-side conversation deletion and blocking
 - Connection requests between users
 - In-app notifications for application updates, messages and connection requests
+- Reset a forgotten password by email, or change it from the profile page
 
 **Administrators**
 
 - Platform statistics
 - Manage users: view profiles, edit details, assign roles, disable or delete accounts
-- Manage every posting, including archived ones
+- Manage every posting, including archived ones, and assign each one to the employer
+  it belongs to
+- Search and page through users, postings and applications on the server
 - Review and remove pending registrations
 
 ## Architecture
@@ -109,13 +112,19 @@ npm run dev
 Open <http://localhost:5173>. The Vite dev server proxies `/api` and `/uploads`
 through to the API, so both sides share one origin and the auth cookie works.
 
-### Confirming a registration without a mail server
+### Email flows without a mail server
 
-Registration sends a confirmation email. With no SMTP server running locally the send
-fails harmlessly, so in the **Development** environment the API also returns the
-confirmation token and the success screen shows a **Confirm now** button. To exercise
-the real email path instead, run any local SMTP catcher on port 1025 (MailHog,
-Papercut, `python -m aiosmtpd -n -l localhost:1025`).
+Registration and password resets both send email. With no SMTP server running locally
+the send fails harmlessly, so in the **Development** environment the API also returns
+the token: the registration success screen shows a **Confirm now** button, and the
+forgot-password screen shows a **Reset now** button. Neither happens in Production.
+
+To exercise the real email path instead, run any local SMTP catcher on port 1025
+(MailHog, Papercut, `python -m aiosmtpd -n -l localhost:1025`).
+
+Password reset links are valid for two hours and can be used once. Completing a reset
+signs out every session the account had, and changing a password from the profile page
+signs out every session except the one making the change.
 
 ## Demo accounts
 
@@ -165,14 +174,34 @@ cd backend.tests
 dotnet test
 ```
 
-47 tests covering `JobService` (search, paging, ownership rules, tag syncing), the
-database guarantees the application depends on (cascade behaviour, unique
-constraints), the upload store including path-traversal rejection, and the shared
-role/status vocabularies.
+80 tests, in two layers.
 
-They run against **SQLite in memory** rather than the EF Core in-memory provider,
-which ignores foreign keys, cascades and unique indexes — exactly the behaviour these
-tests need to verify.
+**Unit tests** cover `JobService` (search, paging, ownership rules, tag syncing, that
+an update carries every field, and that `%` and `_` in a search term are treated as
+text rather than as wildcards), the database guarantees the application depends on
+(cascade behaviour, unique constraints), the upload store including path-traversal
+rejection, and the shared role/status vocabularies.
+
+**Integration tests** run the whole application through `WebApplicationFactory` — real
+pipeline, real controllers, real cookie authentication — and cover the things no unit
+test reaches:
+
+- administration endpoints reject anonymous callers, employees and employers
+- an employer cannot edit, archive, or act on another employer's posting
+- a job seeker cannot publish a posting or move an application through the pipeline
+- a CV is readable by its owner, and by an employer **only** while the applicant has
+  applied to one of that employer's postings
+- the public media route serves avatars but will not hand out the CV folder
+- registration does not reveal whether an address is already taken, enforces the
+  password policy, and will not grant the administrator role
+- a password reset token works once, only for the account it was issued to, and
+  leaves the old password unusable; changing a password needs the current one
+- only an administrator can choose which employer a posting belongs to, and only a
+  real employer can be chosen
+
+Both layers run against **SQLite in memory** rather than the EF Core in-memory
+provider, which ignores foreign keys, cascades and unique indexes — exactly the
+behaviour these tests need to verify.
 
 Frontend checks:
 

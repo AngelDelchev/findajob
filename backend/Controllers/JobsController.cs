@@ -4,6 +4,7 @@ using findajob.Data;
 using findajob.Models;
 using findajob.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,11 +16,17 @@ public class JobsController : ControllerBase
 {
     private readonly JobService _jobService;
     private readonly ApplicationDbContext _context;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public JobsController(JobService jobService, ApplicationDbContext context)
+    public JobsController(
+        JobService jobService,
+        ApplicationDbContext context,
+        UserManager<ApplicationUser> userManager
+    )
     {
         _jobService = jobService;
         _context = context;
+        _userManager = userManager;
     }
 
     [HttpGet]
@@ -80,8 +87,18 @@ public class JobsController : ControllerBase
         }
 
         var job = request.ToEntity();
-        job.OwnerId = userId;
         job.IsDeleted = false;
+
+        // An administrator may publish on an employer's behalf; anyone else owns what
+        // they create. Without this every posting made from the administration screen
+        // belonged to the administrator rather than to the company it was for.
+        var owner = await ResolveOwnerAsync(request.OwnerId, userId, cancellationToken);
+        if (owner is null)
+        {
+            return BadRequest(new { message = "The selected employer could not be found." });
+        }
+
+        job.OwnerId = owner;
 
         if (string.IsNullOrWhiteSpace(job.Company))
         {
@@ -122,6 +139,19 @@ public class JobsController : ControllerBase
 
         var job = request.ToEntity();
         job.Id = id;
+
+        // Only an administrator can hand a posting to a different employer, and only by
+        // asking for it; leaving OwnerId empty keeps the current owner.
+        if (User.IsInRole(Roles.Admin) && !string.IsNullOrWhiteSpace(request.OwnerId))
+        {
+            var owner = await ResolveOwnerAsync(request.OwnerId, userId, cancellationToken);
+            if (owner is null)
+            {
+                return BadRequest(new { message = "The selected employer could not be found." });
+            }
+
+            job.OwnerId = owner;
+        }
 
         var updated = await _jobService.UpdateJobAsync(
             job,
@@ -206,6 +236,40 @@ public class JobsController : ControllerBase
         return Ok(new { message = request.IsDeleted ? "Job archived." : "Job restored." });
     }
 
+    /// <summary>
+    /// Works out who should own a posting. Returns the caller unless an administrator
+    /// nominated somebody else, and <c>null</c> when that nomination is not a real
+    /// employer — so the owner can never be set to an arbitrary id.
+    /// </summary>
+    private async Task<string?> ResolveOwnerAsync(
+        string? requestedOwnerId,
+        string callerId,
+        CancellationToken cancellationToken
+    )
+    {
+        if (!User.IsInRole(Roles.Admin) || string.IsNullOrWhiteSpace(requestedOwnerId))
+        {
+            return callerId;
+        }
+
+        var requested = requestedOwnerId.Trim();
+        if (requested == callerId)
+        {
+            return callerId;
+        }
+
+        var candidate = await _context
+            .Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == requested, cancellationToken);
+
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        return await _userManager.IsInRoleAsync(candidate, Roles.Employer) ? candidate.Id : null;
+    }
+
     public class SetVisibilityRequest
     {
         public bool IsDeleted { get; set; }
@@ -215,9 +279,20 @@ public class JobsController : ControllerBase
     /// Explicit write model. Binding straight to <see cref="JobPosting"/> let a caller
     /// set <c>Id</c>, <c>OwnerId</c>, <c>IsDeleted</c> and <c>CreatedAt</c> from the
     /// request body.
+    ///
+    /// The four vocabulary fields are checked against <see cref="JobConstants"/> in
+    /// <see cref="Validate"/>. They used to accept any string at all, so a posting could
+    /// carry a job type or seniority the rest of the application does not recognise and
+    /// no filter or dropdown can represent.
     /// </summary>
-    public class JobRequest
+    public class JobRequest : IValidatableObject
     {
+        /// <summary>
+        /// The employer the posting belongs to. Honoured only for an administrator, and
+        /// only when it names a real employer; everyone else owns what they create.
+        /// </summary>
+        public string? OwnerId { get; set; }
+
         [Required]
         [MaxLength(200)]
         public string Title { get; set; } = "";
@@ -262,6 +337,53 @@ public class JobsController : ControllerBase
         public DateTime? Deadline { get; set; }
 
         public List<string> Tags { get; set; } = [];
+
+        /// <summary>
+        /// Keeps the stored vocabularies to the values the API publishes at
+        /// <c>/api/jobs/metadata</c>. Only <see cref="JobType"/> is mandatory; the other
+        /// three are optional, so blank stays acceptable.
+        /// </summary>
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            static ValidationResult? Check(string value, string[] allowed, string field, bool optional)
+            {
+                var trimmed = value?.Trim() ?? string.Empty;
+
+                if (trimmed.Length == 0)
+                {
+                    return optional
+                        ? null
+                        : new ValidationResult($"{field} is required.", [field]);
+                }
+
+                return allowed.Contains(trimmed)
+                    ? null
+                    : new ValidationResult(
+                        $"{field} must be one of: {string.Join(", ", allowed)}.",
+                        [field]
+                    );
+            }
+
+            var results = new[]
+            {
+                Check(JobType, JobConstants.JobTypes, nameof(JobType), optional: false),
+                Check(WorkMode, JobConstants.WorkModes, nameof(WorkMode), optional: true),
+                Check(
+                    EmploymentType,
+                    JobConstants.EmploymentTypes,
+                    nameof(EmploymentType),
+                    optional: true
+                ),
+                Check(
+                    SeniorityLevel,
+                    JobConstants.SeniorityLevels,
+                    nameof(SeniorityLevel),
+                    optional: true
+                ),
+            };
+
+            return results.Where(result => result is not null)!;
+        }
 
         public JobPosting ToEntity() =>
             new()

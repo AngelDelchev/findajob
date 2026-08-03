@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import Autocomplete from '@mui/material/Autocomplete'
 import Chip from '@mui/material/Chip'
+import Divider from '@mui/material/Divider'
 import FormControl from '@mui/material/FormControl'
 import InputAdornment from '@mui/material/InputAdornment'
 import InputLabel from '@mui/material/InputLabel'
@@ -8,17 +9,17 @@ import MenuItem from '@mui/material/MenuItem'
 import Select from '@mui/material/Select'
 import Stack from '@mui/material/Stack'
 import TextField from '@mui/material/TextField'
-import { CITIES, COUNTRIES, CURRENCIES, JOB_TYPES } from '../constants'
-
-export type JobFormState = {
-  title: string
-  company: string
-  location: string
-  salary: string
-  jobType: string
-  description: string
-  tags: string[]
-}
+import Typography from '@mui/material/Typography'
+import {
+  CITIES,
+  COUNTRIES,
+  CURRENCIES,
+  EMPLOYMENT_TYPES,
+  JOB_TYPES,
+  SENIORITY_LEVELS,
+  WORK_MODES,
+} from '../constants'
+import type { JobFormState } from '../jobForm'
 
 type Props = {
   form: JobFormState
@@ -59,6 +60,44 @@ export default function JobFormFields({ form, setForm }: Props) {
   const update = <K extends keyof JobFormState>(key: K, value: JobFormState[K]) => {
     setForm({ ...form, [key]: value })
   }
+
+  /** The optional vocabularies all render the same way, including a "leave blank" entry. */
+  const optionalSelect = (
+    key: 'workMode' | 'employmentType' | 'seniorityLevel',
+    label: string,
+    options: readonly string[]
+  ) => {
+    const labelId = `${key}-label`
+
+    return (
+      <FormControl fullWidth>
+        <InputLabel id={labelId}>{label}</InputLabel>
+        <Select
+          labelId={labelId}
+          label={label}
+          value={form[key]}
+          onChange={(event) => update(key, event.target.value)}
+        >
+          <MenuItem value="">
+            <em>Not specified</em>
+          </MenuItem>
+          {options.map((option) => (
+            <MenuItem key={option} value={option}>
+              {option}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    )
+  }
+
+  const sectionHeading = (text: string) => (
+    <Divider sx={{ pt: 1 }}>
+      <Typography variant="caption" sx={{ fontWeight: 800, opacity: 0.6, letterSpacing: 1 }}>
+        {text.toUpperCase()}
+      </Typography>
+    </Divider>
+  )
 
   return (
     <Stack spacing={2.5} sx={{ mt: 1 }}>
@@ -150,6 +189,24 @@ export default function JobFormFields({ form, setForm }: Props) {
         />
       </Stack>
 
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        {optionalSelect('workMode', 'Work mode', WORK_MODES)}
+        {optionalSelect('employmentType', 'Employment type', EMPLOYMENT_TYPES)}
+        {optionalSelect('seniorityLevel', 'Seniority', SENIORITY_LEVELS)}
+      </Stack>
+
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <TextField
+          fullWidth
+          type="date"
+          label="Application deadline"
+          value={form.deadline}
+          onChange={(event) => update('deadline', event.target.value)}
+          helperText="Leave blank for no deadline."
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
+      </Stack>
+
       <Autocomplete<string, true, false, true>
         multiple
         freeSolo
@@ -181,14 +238,57 @@ export default function JobFormFields({ form, setForm }: Props) {
         )}
       />
 
+      {sectionHeading('The role')}
+
       <TextField
         label="Job description"
         value={form.description}
         onChange={(event) => update('description', event.target.value)}
         multiline
-        minRows={8}
+        minRows={6}
         fullWidth
         required
+      />
+
+      <TextField
+        label="Responsibilities"
+        value={form.responsibilities}
+        onChange={(event) => update('responsibilities', event.target.value)}
+        multiline
+        minRows={4}
+        fullWidth
+        helperText="One per line works well."
+      />
+
+      <TextField
+        label="Requirements"
+        value={form.requirements}
+        onChange={(event) => update('requirements', event.target.value)}
+        multiline
+        minRows={4}
+        fullWidth
+        helperText="One per line works well."
+      />
+
+      <TextField
+        label="Benefits"
+        value={form.benefits}
+        onChange={(event) => update('benefits', event.target.value)}
+        multiline
+        minRows={3}
+        fullWidth
+      />
+
+      {sectionHeading('The company')}
+
+      <TextField
+        label="About the company"
+        value={form.companyDescription}
+        onChange={(event) => update('companyDescription', event.target.value)}
+        multiline
+        minRows={3}
+        fullWidth
+        helperText="Shown alongside the posting."
       />
     </Stack>
   )

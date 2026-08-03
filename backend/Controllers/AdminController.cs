@@ -36,19 +36,58 @@ public class AdminController : ControllerBase
         _logger = logger;
     }
 
+    /// <summary>Default and maximum page sizes for the administration lists.</summary>
+    private const int DefaultPageSize = 25;
+
+    private const int MaxPageSize = 100;
+
     /// <summary>
-    /// Lists users with their roles. Roles are fetched with a single join rather than
-    /// a <c>GetRolesAsync</c> call per user, which previously made this endpoint issue
-    /// one query per row.
+    /// Lists users with their roles, a page at a time.
+    ///
+    /// Roles are fetched with a single join rather than a <c>GetRolesAsync</c> call per
+    /// user, which previously made this endpoint issue one query per row. The whole
+    /// table also used to come back in one response and render as one enormous HTML
+    /// table, with no way to search it.
     /// </summary>
     [HttpGet("users")]
-    public async Task<IActionResult> GetUsers()
+    public async Task<IActionResult> GetUsers(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize
+    )
     {
-        var users = await _userManager.Users.AsNoTracking().ToListAsync();
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+
+        var query = _userManager.Users.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = SearchPattern.Contains(search);
+
+            query = query.Where(u =>
+                EF.Functions.Like(u.FirstName, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(u.LastName, pattern, SearchPattern.Escape)
+                || (u.Email != null && EF.Functions.Like(u.Email, pattern, SearchPattern.Escape))
+                || (
+                    u.CompanyName != null
+                    && EF.Functions.Like(u.CompanyName, pattern, SearchPattern.Escape)
+                )
+            );
+        }
+
+        var total = await query.CountAsync();
+
+        var users = await query
+            .OrderBy(u => u.Email)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
         var rolesByUser = await GetRolesByUserAsync();
         var now = DateTimeOffset.UtcNow;
 
-        var result = users.Select(user => new
+        var items = users.Select(user => new
         {
             user.Id,
             user.Email,
@@ -60,8 +99,19 @@ public class AdminController : ControllerBase
             IsDisabled = user.LockoutEnd.HasValue && user.LockoutEnd.Value > now,
         });
 
-        return Ok(result);
+        return Ok(Page(items, page, pageSize, total));
     }
+
+    /// <summary>The envelope every paged endpoint in the application returns.</summary>
+    private static object Page<T>(IEnumerable<T> items, int page, int pageSize, int total) =>
+        new
+        {
+            items,
+            page,
+            pageSize,
+            total,
+            totalPages = (int)Math.Ceiling(total / (double)pageSize),
+        };
 
     /// <summary>
     /// Lists every posting, including archived ones.
@@ -70,16 +120,43 @@ public class AdminController : ControllerBase
     /// <c>JobPosting.Tags</c>, which is <c>[NotMapped]</c> and therefore always empty,
     /// so opening a job in the admin editor and saving it silently deleted every tag
     /// on that posting.
+    ///
+    /// Every field the editor can write is returned for the same reason: saving
+    /// replaces the whole posting, so anything this endpoint omits is blanked out the
+    /// first time an administrator opens the dialog and clicks Save.
     /// </summary>
     [HttpGet("jobs")]
-    public async Task<IActionResult> GetJobs()
+    public async Task<IActionResult> GetJobs(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize
+    )
     {
-        var jobs = await _context
-            .JobPostings.IgnoreQueryFilters()
-            .AsNoTracking()
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+
+        var query = _context.JobPostings.IgnoreQueryFilters().AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = SearchPattern.Contains(search);
+
+            query = query.Where(j =>
+                EF.Functions.Like(j.Title, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(j.Company, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(j.Location, pattern, SearchPattern.Escape)
+            );
+        }
+
+        var total = await query.CountAsync();
+
+        var jobs = await query
             .Include(j => j.JobPostingTags)
             .ThenInclude(jt => jt.Tag)
             .OrderByDescending(j => j.CreatedAt)
+            .ThenByDescending(j => j.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .ToListAsync();
 
         var ownerIds = jobs.Select(j => j.OwnerId).Distinct().ToList();
@@ -88,17 +165,27 @@ public class AdminController : ControllerBase
             .Where(u => ownerIds.Contains(u.Id))
             .ToDictionaryAsync(u => u.Id, u => u.CompanyName);
 
-        var result = jobs.Select(job => new
+        var items = jobs.Select(job => new
         {
             job.Id,
             job.Title,
+            job.OwnerId,
+            OwnerCompany = owners.GetValueOrDefault(job.OwnerId) ?? "",
             Company = string.IsNullOrEmpty(job.Company)
                 ? owners.GetValueOrDefault(job.OwnerId) ?? ""
                 : job.Company,
+            job.CompanyDescription,
             job.Location,
             job.Salary,
             JobType = string.IsNullOrEmpty(job.JobType) ? "Full-time" : job.JobType,
+            job.WorkMode,
+            job.EmploymentType,
+            job.SeniorityLevel,
             job.Description,
+            job.Requirements,
+            job.Responsibilities,
+            job.Benefits,
+            job.Deadline,
             job.IsDeleted,
             job.CreatedAt,
             Tags = job.JobPostingTags
@@ -107,15 +194,75 @@ public class AdminController : ControllerBase
                 .ToList(),
         });
 
-        return Ok(result);
+        return Ok(Page(items, page, pageSize, total));
+    }
+
+    /// <summary>
+    /// The employers a posting can be assigned to.
+    ///
+    /// Creating a job from the administration screen posts to the ordinary jobs endpoint,
+    /// which stamps the caller as the owner — so every posting an administrator created
+    /// belonged to the administrator, showed their company, and never appeared on the
+    /// real employer's dashboard. This backs the owner picker that fixes that.
+    /// </summary>
+    [HttpGet("employers")]
+    public async Task<IActionResult> GetEmployers()
+    {
+        var employerIds = await (
+            from userRole in _context.UserRoles
+            join role in _context.Roles on userRole.RoleId equals role.Id
+            where role.Name == Roles.Employer
+            select userRole.UserId
+        ).ToListAsync();
+
+        var employers = await _userManager
+            .Users.AsNoTracking()
+            .Where(u => employerIds.Contains(u.Id))
+            .OrderBy(u => u.CompanyName)
+            .Select(u => new
+            {
+                u.Id,
+                u.Email,
+                u.CompanyName,
+                u.FirstName,
+                u.LastName,
+            })
+            .ToListAsync();
+
+        return Ok(employers);
     }
 
     [HttpGet("applications")]
-    public async Task<IActionResult> GetApplications()
+    public async Task<IActionResult> GetApplications(
+        [FromQuery] string? search,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = DefaultPageSize
+    )
     {
-        var applications = await _context
-            .JobApplications.AsNoTracking()
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, MaxPageSize);
+
+        var query = _context.JobApplications.AsNoTracking();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var pattern = SearchPattern.Contains(search);
+
+            query = query.Where(a =>
+                EF.Functions.Like(a.JobTitle, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(a.CompanyName, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(a.ApplicantName, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(a.ApplicantEmail, pattern, SearchPattern.Escape)
+            );
+        }
+
+        var total = await query.CountAsync();
+
+        var items = await query
             .OrderByDescending(a => a.AppliedAt)
+            .ThenByDescending(a => a.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(a => new
             {
                 a.Id,
@@ -132,7 +279,7 @@ public class AdminController : ControllerBase
             })
             .ToListAsync();
 
-        return Ok(applications);
+        return Ok(Page(items, page, pageSize, total));
     }
 
     [HttpGet("stats")]
@@ -252,6 +399,12 @@ public class AdminController : ControllerBase
             });
         }
 
+        // Roles are baked into the authentication cookie when it is issued, and changing
+        // them does not update the security stamp on its own. Without this a demoted
+        // administrator kept their Admin claim, and a promoted user did not receive
+        // theirs, until they next signed in.
+        await _userManager.UpdateSecurityStampAsync(user);
+
         return Ok(new { message = "Roles updated." });
     }
 
@@ -274,6 +427,12 @@ public class AdminController : ControllerBase
             user,
             request.Disabled ? DateTimeOffset.UtcNow.AddYears(100) : null
         );
+
+        // Lockout is only consulted while signing in, and changing it does not touch the
+        // security stamp, so disabling an account did nothing to anyone already signed
+        // in: they kept full access until their cookie expired, up to seven days.
+        // Rotating the stamp invalidates every session the account holds.
+        await _userManager.UpdateSecurityStampAsync(user);
 
         return Ok(new { message = request.Disabled ? "User disabled." : "User enabled." });
     }
@@ -394,6 +553,24 @@ public class AdminController : ControllerBase
         _context.Notifications.RemoveRange(_context.Notifications.Where(n => n.UserId == id));
         _context.SavedJobs.RemoveRange(_context.SavedJobs.Where(s => s.UserId == id));
         _context.JobApplications.RemoveRange(_context.JobApplications.Where(a => a.UserId == id));
+
+        // Deleting an employer cascades their postings away. SavedJob has no foreign key
+        // to a posting, so without this every *other* user who had saved one of those
+        // jobs was left holding a row pointing at nothing. DeleteJob already does this;
+        // this path used to clear only the departing user's own saved jobs.
+        var ownedJobIds = await _context
+            .JobPostings.IgnoreQueryFilters()
+            .Where(j => j.OwnerId == id)
+            .Select(j => j.Id)
+            .ToListAsync();
+
+        if (ownedJobIds.Count > 0)
+        {
+            _context.SavedJobs.RemoveRange(
+                _context.SavedJobs.Where(s => ownedJobIds.Contains(s.JobPostingId))
+            );
+        }
+
         _context.Messages.RemoveRange(
             _context.Messages.Where(m => m.SenderUserId == id || m.ReceiverUserId == id)
         );

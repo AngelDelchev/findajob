@@ -49,13 +49,16 @@ public class JobService
 
         if (!string.IsNullOrWhiteSpace(searchTerm))
         {
-            var term = searchTerm.Trim().ToLower();
+            var pattern = SearchPattern.Contains(searchTerm);
+
             query = query.Where(j =>
-                j.Title.ToLower().Contains(term)
-                || j.Company.ToLower().Contains(term)
-                || j.Description.ToLower().Contains(term)
-                || j.Location.ToLower().Contains(term)
-                || j.JobPostingTags.Any(jt => jt.Tag != null && jt.Tag.Name.ToLower().Contains(term))
+                EF.Functions.Like(j.Title, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(j.Company, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(j.Description, pattern, SearchPattern.Escape)
+                || EF.Functions.Like(j.Location, pattern, SearchPattern.Escape)
+                || j.JobPostingTags.Any(jt =>
+                    jt.Tag != null && EF.Functions.Like(jt.Tag.Name, pattern, SearchPattern.Escape)
+                )
             );
         }
 
@@ -154,6 +157,14 @@ public class JobService
         if (existing is null || (!isAdmin && existing.OwnerId != currentUserId))
         {
             return false;
+        }
+
+        // An administrator may hand a posting to a different employer. The controller has
+        // already checked that the id names a real one; an empty value means "leave the
+        // owner alone", which is what every non-administrator save sends.
+        if (isAdmin && !string.IsNullOrWhiteSpace(job.OwnerId))
+        {
+            existing.OwnerId = job.OwnerId;
         }
 
         existing.Title = job.Title;
